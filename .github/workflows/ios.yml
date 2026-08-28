@@ -24,6 +24,11 @@ jobs:
       - name: Install ldid (TrollStore Signing Tool)
         run: brew install ldid
 
+      - name: Setup Share Extension Target
+        run: |
+          gem install xcodeproj
+          ruby setup_extension.rb
+
       - name: Build iOS (No Codesign)
         run: flutter build ios --release --no-codesign
           

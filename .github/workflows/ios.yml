@@ -16,7 +16,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.19.0' # 可根据你本地实际版本修改
+          flutter-version: 'any'
 
       - name: Install Dependencies
         run: flutter pub get
@@ -29,10 +29,9 @@ jobs:
           
       - name: Inject TrollStore Privileges (ldid)
         run: |
-          # 1. 给 Flutter 主程序注入巨魔特权
-          ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app
+          # 1. �?Flutter 主程序注入巨魔特�?          ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app
           
-          # 2. 如果存在 Share Extension，也一并注入 (无视内存限制的核心)
+          # 2. 如果存在 Share Extension，也一并注�?(无视内存限制的核�?
           if [ -d "build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex" ]; then
             echo "Found Share Extension, injecting privileges..."
             ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex

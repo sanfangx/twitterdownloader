@@ -37,7 +37,7 @@ class MyApp extends StatelessWidget {
             return const TextStyle(color: Colors.white54, fontSize: 12);
           }),
         ),
-        cardTheme: const CardTheme(color: Color(0xFF1A1A1A)),
+        cardTheme: const CardThemeData(color: Color(0xFF1A1A1A)),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFF1A1A1A),
@@ -69,7 +69,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
         ),
-        dialogTheme: const DialogTheme(
+        dialogTheme: const DialogThemeData(
           backgroundColor: Color(0xFF1A1A1A),
         ),
         snackBarTheme: const SnackBarThemeData(

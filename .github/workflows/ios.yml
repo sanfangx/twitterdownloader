@@ -29,12 +29,13 @@ jobs:
           
       - name: Inject TrollStore Privileges (ldid)
         run: |
-          # 1. �?Flutter 主程序注入巨魔特�?          ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app
+          # 1. Inject TrollStore privileges to the main Flutter executable
+          ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/Runner
           
-          # 2. 如果存在 Share Extension，也一并注�?(无视内存限制的核�?
+          # 2. Inject privileges to the Share Extension if it exists
           if [ -d "build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex" ]; then
             echo "Found Share Extension, injecting privileges..."
-            ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex
+            ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex/TwitterShareExtension
           else
             echo "No Share Extension found yet."
           fi

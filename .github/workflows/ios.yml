@@ -1,0 +1,53 @@
+name: iOS TrollStore Build
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.19.0' # 可根据你本地实际版本修改
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Install ldid (TrollStore Signing Tool)
+        run: brew install ldid
+
+      - name: Build iOS (No Codesign)
+        run: flutter build ios --release --no-codesign
+          
+      - name: Inject TrollStore Privileges (ldid)
+        run: |
+          # 1. 给 Flutter 主程序注入巨魔特权
+          ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app
+          
+          # 2. 如果存在 Share Extension，也一并注入 (无视内存限制的核心)
+          if [ -d "build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex" ]; then
+            echo "Found Share Extension, injecting privileges..."
+            ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex
+          else
+            echo "No Share Extension found yet."
+          fi
+
+      - name: Create TrollStore IPA Payload
+        run: |
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r twitter_downloader_trollstore.ipa Payload
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trollstore-twitter-downloader
+          path: twitter_downloader_trollstore.ipa

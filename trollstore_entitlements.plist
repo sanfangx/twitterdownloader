@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 1. 任意 App Group 权限 -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.trollstore.twitterdownloader</string>
+    </array>
+    
+    <!-- 2. 突破系统级内存限制 (防止 Share Extension 被杀后台) -->
+    <key>com.apple.private.memorystatus</key>
+    <true/>
+
+    <!-- 3. 修复巨魔专属 Bug：强制指定数据容器，防止扩展迷失在 GTA Tracker 沙盒中 -->
+    <key>com.apple.private.security.container-required</key>
+    <string>com.trollstore.twitterdownloader</string>
+</dict>
+</plist>

@@ -137,10 +137,36 @@ class ShareViewController: UIViewController {
 
     func showToast(_ message: String) {
         print(message)
+        DispatchQueue.main.async {
+            let toastLabel = UILabel()
+            toastLabel.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+            toastLabel.textColor = UIColor.white
+            toastLabel.font = UIFont.systemFont(ofSize: 14.0)
+            toastLabel.textAlignment = .center
+            toastLabel.text = message
+            toastLabel.alpha = 1.0
+            toastLabel.layer.cornerRadius = 10
+            toastLabel.clipsToBounds  =  true
+            
+            let maxSizeTitle = CGSize(width: self.view.bounds.size.width-32, height: self.view.bounds.size.height)
+            var expectedSizeTitle = toastLabel.sizeThatFits(maxSizeTitle)
+            expectedSizeTitle = CGSize(width: expectedSizeTitle.width + 32, height: expectedSizeTitle.height + 16)
+            
+            toastLabel.frame = CGRect(x: self.view.bounds.size.width/2 - expectedSizeTitle.width/2,
+                                      y: self.view.bounds.size.height/2 - expectedSizeTitle.height/2,
+                                      width: expectedSizeTitle.width,
+                                      height: expectedSizeTitle.height)
+            
+            self.view.addSubview(toastLabel)
+            
+            // We want it to be visible briefly before completeExtension is called,
+            // so we don't immediately fade it if it's the final message.
+            // completeExtension handles the dismissal.
+        }
     }
 
     func completeExtension() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
         }
     }

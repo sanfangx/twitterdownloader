@@ -1,7 +1,10 @@
+import 'package:shared_preference_app_group/shared_preference_app_group.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_cookie_manager/webview_cookie_manager.dart';
+
+const String appGroupId = 'group.com.trollstore.twitterdownloader';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -18,7 +21,16 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _initAppGroup();
     _checkAuthStatus();
+  }
+
+  Future<void> _initAppGroup() async {
+    try {
+      await SharedPreferenceAppGroup.setAppGroup(appGroupId);
+    } catch (e) {
+      debugPrint('Error setting app group: $e');
+    }
   }
 
   Future<void> _checkAuthStatus() async {
@@ -53,6 +65,14 @@ class _SettingsPageState extends State<SettingsPage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('tw_auth_token');
       await prefs.remove('tw_ct0');
+      
+      try {
+        await SharedPreferenceAppGroup.remove('tw_auth_token');
+        await SharedPreferenceAppGroup.remove('tw_ct0');
+      } catch (e) {
+        debugPrint('Error removing from app group: $e');
+      }
+      
       setState(() {
         _isAuthenticated = false;
         _authToken = null;
@@ -226,6 +246,13 @@ class _LoginWebViewState extends State<LoginWebView> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('tw_auth_token', authToken);
         await prefs.setString('tw_ct0', ct0);
+
+        try {
+          await SharedPreferenceAppGroup.setString('tw_auth_token', authToken);
+          await SharedPreferenceAppGroup.setString('tw_ct0', ct0);
+        } catch (e) {
+          debugPrint('Error saving to app group: $e');
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

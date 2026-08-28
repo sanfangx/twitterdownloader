@@ -7,7 +7,11 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Twitter Image Downloader</string>
+	<string>推特原图下载</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>需要访问相册以保存下载的原图</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>需要保存下载的原图到您的相册</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:webview_cookie_manager/webview_cookie_manager.dart';
 
 void main() {
   runApp(const MyApp());
@@ -176,33 +177,25 @@ class _LoginWebViewState extends State<LoginWebView> {
 
   Future<void> _extractCookies() async {
     try {
-      final String cookiesStr = await _controller.runJavaScriptReturningResult(
-          'document.cookie') as String;
+      final cookieManager = WebviewCookieManager();
+      final gotCookies = await cookieManager.getCookies('https://twitter.com');
+      final xCookies = await cookieManager.getCookies('https://x.com');
       
-      // Remove quotes around the cookie string if they exist
-      final String cleanCookies = cookiesStr.replaceAll('"', '');
+      final allCookies = [...gotCookies, ...xCookies];
       
       String? authToken;
       String? ct0;
       
-      final parts = cleanCookies.split(';');
-      for (final part in parts) {
-        final pair = part.trim().split('=');
-        if (pair.length == 2) {
-          if (pair[0] == 'auth_token') {
-            authToken = pair[1];
-          } else if (pair[0] == 'ct0') {
-            ct0 = pair[1];
-          }
+      for (var cookie in allCookies) {
+        if (cookie.name == 'auth_token') {
+          authToken = cookie.value;
+        } else if (cookie.name == 'ct0') {
+          ct0 = cookie.value;
         }
       }
       
       if (authToken != null && ct0 != null) {
         final prefs = await SharedPreferences.getInstance();
-        // NOTE: For true iOS App Group support, you need to use a plugin that supports iOS UserDefaults suiteName.
-        // Flutter's shared_preferences doesn't easily support App Groups by default,
-        // often requiring flutter_secure_storage or a custom MethodChannel or a specific plugin like `shared_preference_app_group`.
-        // For simplicity in this demo, we save it normally, but in production, we should map this to App Group.
         await prefs.setString('tw_auth_token', authToken);
         await prefs.setString('tw_ct0', ct0);
         

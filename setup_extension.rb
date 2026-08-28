@@ -24,6 +24,7 @@ ext_target.product_name = 'TwitterShareExtension'
 # 3. Configure Build Settings
 ext_target.build_configurations.each do |config|
   config.build_settings['INFOPLIST_FILE'] = 'TwitterShareExtension/Info.plist'
+  config.build_settings['PRODUCT_NAME'] = 'TwitterShareExtension'
   config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.trollstore.twitterdownloader.TwitterShareExtension'
   config.build_settings['SWIFT_VERSION'] = '5.0'
   config.build_settings['TARGETED_DEVICE_FAMILY'] = '1,2'

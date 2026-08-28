@@ -44,7 +44,7 @@ embed_phase = runner_target.copy_files_build_phases.find { |p| p.name == 'Embed 
 unless embed_phase
   embed_phase = project.new(Xcodeproj::Project::Object::PBXCopyFilesBuildPhase)
   embed_phase.name = 'Embed App Extensions'
-  embed_phase.symbolic_dst_subfolder_spec = :plug_ins
+  embed_phase.symbol_dst_subfolder_spec = :plug_ins
   runner_target.build_phases << embed_phase
 end
 

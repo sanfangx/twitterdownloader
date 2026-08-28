@@ -143,13 +143,31 @@ class _LoginWebViewState extends State<LoginWebView> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      // 设置自定义的 User-Agent 伪装成手机 Safari，防止推特拦截 WebView
+      ..setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1")
       ..setNavigationDelegate(
         NavigationDelegate(
+          onPageStarted: (String url) {
+            setState(() {
+              _isLoading = true;
+            });
+          },
           onPageFinished: (String url) {
             setState(() {
               _isLoading = false;
             });
             _extractCookies();
+          },
+          onWebResourceError: (WebResourceError error) {
+            debugPrint('WebView加载错误: ${error.description}');
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('页面加载失败: ${error.description}')),
+              );
+            }
           },
         ),
       )

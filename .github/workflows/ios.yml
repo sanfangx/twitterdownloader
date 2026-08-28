@@ -29,26 +29,66 @@ jobs:
           gem install xcodeproj
           ruby setup_extension.rb
 
-      - name: Build iOS (No Codesign)
-        run: flutter build ios --release --no-codesign
+      - name: Prepare Flutter Build
+        run: |
+          # Run flutter build to generate the Flutter framework and Dart AOT code
+          # This may fail due to extension signing, but it prepares all Flutter assets
+          flutter build ios --no-codesign || true
+
+      - name: Build with xcodebuild (includes Share Extension)
+        run: |
+          cd ios
+          xcodebuild build \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ../build/ios/derived \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            -allowProvisioningUpdates=NO \
+            | tail -50
+
+      - name: Locate and Verify Build Products
+        run: |
+          echo "=== Looking for Runner.app ==="
+          APP_PATH=$(find build/ios/derived -name "Runner.app" -type d | head -1)
+          echo "Found app at: $APP_PATH"
           
+          echo "=== Checking for Share Extension ==="
+          if [ -d "$APP_PATH/PlugIns/TwitterShareExtension.appex" ]; then
+            echo "SUCCESS: Share Extension found inside Runner.app!"
+            ls -la "$APP_PATH/PlugIns/"
+          else
+            echo "WARNING: Share Extension NOT found in PlugIns"
+            echo "Listing PlugIns directory if it exists:"
+            ls -la "$APP_PATH/PlugIns/" 2>/dev/null || echo "No PlugIns directory"
+            
+            echo "Searching for .appex files anywhere in build:"
+            find build -name "*.appex" -type d 2>/dev/null || echo "No .appex found"
+          fi
+          
+          # Export the path for later steps
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+
       - name: Inject TrollStore Privileges (ldid)
         run: |
-          # 1. Inject TrollStore privileges to the main Flutter executable
-          ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/Runner
+          # Inject entitlements to main app binary
+          ldid -Strollstore_entitlements.plist "$APP_PATH/Runner"
+          echo "Injected entitlements to Runner"
           
-          # 2. Inject privileges to the Share Extension if it exists
-          if [ -d "build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex" ]; then
-            echo "Found Share Extension, injecting privileges..."
-            ldid -Strollstore_entitlements.plist build/ios/iphoneos/Runner.app/PlugIns/TwitterShareExtension.appex/TwitterShareExtension
-          else
-            echo "No Share Extension found yet."
+          # Inject entitlements to Share Extension binary if it exists
+          if [ -f "$APP_PATH/PlugIns/TwitterShareExtension.appex/TwitterShareExtension" ]; then
+            ldid -Strollstore_entitlements.plist "$APP_PATH/PlugIns/TwitterShareExtension.appex/TwitterShareExtension"
+            echo "Injected entitlements to TwitterShareExtension"
           fi
 
       - name: Create TrollStore IPA Payload
         run: |
           mkdir -p Payload
-          mv build/ios/iphoneos/Runner.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r twitter_downloader_trollstore.ipa Payload
 
       - name: Upload Artifact

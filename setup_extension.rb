@@ -48,7 +48,14 @@ unless embed_phase
   embed_phase = project.new(Xcodeproj::Project::Object::PBXCopyFilesBuildPhase)
   embed_phase.name = 'Embed App Extensions'
   embed_phase.symbol_dst_subfolder_spec = :plug_ins
-  runner_target.build_phases << embed_phase
+  
+  # Insert before "Thin Binary" to avoid Xcode dependency cycle
+  thin_binary_index = runner_target.build_phases.find_index { |p| p.respond_to?(:name) && p.name == 'Thin Binary' }
+  if thin_binary_index
+    runner_target.build_phases.insert(thin_binary_index, embed_phase)
+  else
+    runner_target.build_phases << embed_phase
+  end
 end
 
 # Add the extension product to the embed phase

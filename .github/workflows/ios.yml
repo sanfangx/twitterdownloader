@@ -37,6 +37,7 @@ jobs:
 
       - name: Build with xcodebuild (includes Share Extension)
         run: |
+          set -o pipefail
           cd ios
           xcodebuild build \
             -workspace Runner.xcworkspace \
@@ -48,8 +49,12 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            -allowProvisioningUpdates=NO \
-            | tail -50
+            -allowProvisioningUpdates=NO > xcodebuild.log 2>&1 || {
+              echo "xcodebuild failed! Tail of log:"
+              tail -200 xcodebuild.log
+              exit 1
+            }
+          echo "xcodebuild succeeded."
 
       - name: Locate and Verify Build Products
         run: |

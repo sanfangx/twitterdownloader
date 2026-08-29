@@ -200,9 +200,18 @@ class ShareViewController: UIViewController {
         request.setValue("https://x.com/", forHTTPHeaderField: "referer")
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "user-agent")
         
+        // Use an ephemeral session configuration for image downloads to avoid caching and proxy issues
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        let imageSession = URLSession(configuration: sessionConfig)
+        
         do {
             if Task.isCancelled { return }
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                updateStatus("API 请求失败: HTTP \(httpResponse.statusCode)", isFinished: true)
+                return
+            }
             
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                let dataObj = json["data"] as? [String: Any],
@@ -224,25 +233,37 @@ class ShareViewController: UIViewController {
                             let origUrlStr = mediaUrl.contains("?format=") ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=orig", options: .regularExpression) : mediaUrl + ":orig"
                             
                             if let imgUrl = URL(string: origUrlStr) {
-                                let (imgData, _) = try await URLSession.shared.data(from: imgUrl)
-                                if let image = UIImage(data: imgData) {
-                                    try await PHPhotoLibrary.shared().performChanges {
-                                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                                do {
+                                    var imgRequest = URLRequest(url: imgUrl)
+                                    imgRequest.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "user-agent")
+                                    
+                                    // Use download task to save memory and handle large files better
+                                    let (tempUrl, imgResponse) = try await imageSession.download(for: imgRequest)
+                                    
+                                    if let httpResponse = imgResponse as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                                        try await PHPhotoLibrary.shared().performChanges {
+                                            PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: tempUrl)
+                                        }
+                                        savedCount += 1
+                                    } else {
+                                        let statusCode = (imgResponse as? HTTPURLResponse)?.statusCode ?? 0
+                                        updateStatus("图片下载失败 HTTP \(statusCode)", isFinished: false)
                                     }
-                                    savedCount += 1
+                                } catch {
+                                    updateStatus("下载第\(index + 1)张时出错: \(error.localizedDescription)", isFinished: false)
+                                    // wait 1 second to let user see the error, then continue
+                                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                                 }
                             }
                         }
                     }
                     if savedCount > 0 {
                         updateStatus("✅ 成功保存 \(savedCount) 张原图到相册", isFinished: true)
-                        
-                        // Auto-close after 1.5 seconds if successful
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
                         }
                     } else {
-                        updateStatus("未在这条推文中找到任何图片", isFinished: true)
+                        updateStatus("完成，但未能成功下载图片", isFinished: true)
                     }
                 } else {
                     updateStatus("推文中没有媒体内容", isFinished: true)
@@ -251,7 +272,7 @@ class ShareViewController: UIViewController {
                 updateStatus("解析推文失败，可能由于 Cookie 过期或权限不足", isFinished: true)
             }
         } catch {
-            updateStatus("网络请求失败: \(error.localizedDescription)", isFinished: true)
+            updateStatus("网络请求崩溃: \(error.localizedDescription)", isFinished: true)
         }
     }
 }

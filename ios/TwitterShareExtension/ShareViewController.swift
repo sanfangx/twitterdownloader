@@ -563,12 +563,26 @@ class ShareViewController: UIViewController {
                     continue
                 }
                 
-                extLog("Image \(fileNum) downloaded to temp file. Saving to Photos...")
+                let mimeType = response.mimeType ?? "image/jpeg"
+                let ext = mimeType == "image/png" ? "png" : "jpg"
                 
-                // Save directly from temp file to Photos (zero memory copy)
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: tempFileURL)
+                let fileManager = FileManager.default
+                let destURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".\(ext)")
+                
+                if fileManager.fileExists(atPath: destURL.path) {
+                    try fileManager.removeItem(at: destURL)
                 }
+                try fileManager.moveItem(at: tempFileURL, to: destURL)
+                
+                extLog("Image \(fileNum) moved to \(destURL.lastPathComponent). Saving to Photos...")
+                
+                // Save directly from the correctly extensioned temp file to Photos
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: destURL)
+                }
+                
+                // Clean up
+                try? fileManager.removeItem(at: destURL)
                 
                 extLog("Image \(fileNum) saved successfully.")
                 savedCount += 1

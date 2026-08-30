@@ -20,13 +20,10 @@ class ShareViewController: UIViewController {
     private let retryButton = UIButton(type: .system)
     private var downloadTask: Task<Void, Never>?
     
-    // Background download tracking
-    private var bgSession: URLSession?
-    private var pendingDownloads: Int = 0
+    // Download tracking
+    private var totalImages: Int = 0
     private var savedCount: Int = 0
     private var failedCount: Int = 0
-    private var totalImages: Int = 0
-    private let counterQueue = DispatchQueue(label: "com.trollstore.twitterdownloader.counter")
     
     // For retry
     private var lastTweetId: String?
@@ -267,7 +264,6 @@ class ShareViewController: UIViewController {
     
     private func dismissExtension() {
         downloadTask?.cancel()
-        bgSession?.invalidateAndCancel()
         animateCardOut {
             self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
         }
@@ -304,7 +300,6 @@ class ShareViewController: UIViewController {
         
         // Auto-close after 1.5s
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            self.bgSession?.finishTasksAndInvalidate()
             self.animateCardOut {
                 self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             }
@@ -461,7 +456,7 @@ class ShareViewController: UIViewController {
                         return
                     }
                     
-                    startBackgroundDownloads(urls: imageUrls)
+                    await downloadImages(urls: imageUrls)
                     
                 } else {
                     showFailure(message: "推文中没有媒体内容", canRetry: false)
@@ -475,123 +470,66 @@ class ShareViewController: UIViewController {
         }
     }
     
-    // MARK: - Background URLSession for image downloads
-    private func startBackgroundDownloads(urls: [URL]) {
-        counterQueue.sync {
-            totalImages = urls.count
-            pendingDownloads = urls.count
-            savedCount = 0
-            failedCount = 0
-        }
+    // MARK: - Sequential image downloads using standard URLSession
+    // We use a standard URLSession instead of background session because:
+    // - TrollStore's com.apple.private.memorystatus entitlement keeps the extension alive
+    // - Background sessions require a real App Group container on disk, which TrollStore
+    //   doesn't create (it only injects the entitlement via ldid)
+    // - Sequential downloads minimize memory pressure in the extension
+    private func downloadImages(urls: [URL]) async {
+        totalImages = urls.count
+        savedCount = 0
+        failedCount = 0
         
-        updateStatus("正在下载 \(urls.count) 张原图...")
+        updateStatus("正在下载 \(totalImages) 张原图...")
         updateProgress(0)
         
-        let sessionId = "com.trollstore.twitterdownloader.bg.\(UUID().uuidString)"
-        let config = URLSessionConfiguration.background(withIdentifier: sessionId)
-        config.sharedContainerIdentifier = appGroupId
-        config.sessionSendsLaunchEvents = false
-        config.isDiscretionary = false
-        config.timeoutIntervalForRequest = 60
-        config.timeoutIntervalForResource = 120
-        config.httpMaximumConnectionsPerHost = 4
+        let session = URLSession(configuration: .default)
         
-        bgSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
-        
-        for url in urls {
-            var request = URLRequest(url: url)
-            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "user-agent")
-            let task = bgSession!.downloadTask(with: request)
-            task.resume()
-        }
-    }
-    
-    private func checkAllDownloadsComplete() {
-        var currentPending = 0
-        var currentSaved = 0
-        var currentFailed = 0
-        var currentTotal = 0
-        
-        counterQueue.sync {
-            pendingDownloads -= 1
-            currentPending = pendingDownloads
-            currentSaved = savedCount
-            currentFailed = failedCount
-            currentTotal = totalImages
-        }
-        
-        let done = currentTotal - currentPending
-        let overallProgress = Float(done) / Float(max(currentTotal, 1))
-        updateProgress(overallProgress)
-        updateStatus("已完成 \(done)/\(currentTotal)，成功 \(currentSaved) 张")
-        
-        if currentPending <= 0 {
-            if currentSaved > 0 {
-                showSuccess(saved: currentSaved, total: currentTotal)
-            } else {
-                showFailure(message: "下载完成，但未能保存任何图片到相册\n失败 \(currentFailed) 张", canRetry: true)
-                bgSession?.finishTasksAndInvalidate()
-            }
-        }
-    }
-}
-
-// MARK: - URLSessionDownloadDelegate
-extension ShareViewController: URLSessionDownloadDelegate {
-    
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        let semaphore = DispatchSemaphore(value: 0)
-        
-        PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: location)
-        }) { [weak self] success, error in
-            if success {
-                self?.counterQueue.sync {
-                    self?.savedCount += 1
-                }
-            } else {
-                print("Photo save error: \(error?.localizedDescription ?? "unknown")")
-                self?.counterQueue.sync {
-                    self?.failedCount += 1
-                }
-            }
-            semaphore.signal()
-        }
-        
-        semaphore.wait()
-        checkAllDownloadsComplete()
-    }
-    
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error = error {
-            let nsError = error as NSError
-            if nsError.code == NSURLErrorCancelled { return }
+        for (index, url) in urls.enumerated() {
+            if Task.isCancelled { return }
             
-            print("Download failed: \(error.localizedDescription)")
-            counterQueue.sync {
+            let fileNum = index + 1
+            updateStatus("正在下载 (\(fileNum)/\(totalImages))...")
+            
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 60
+                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "user-agent")
+                
+                // Use download task (writes to temp file on disk, not memory)
+                let (tempFileURL, response) = try await session.download(for: request)
+                
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    print("Image \(fileNum) HTTP error: \(code)")
+                    failedCount += 1
+                    updateProgress(Float(index + 1) / Float(totalImages))
+                    continue
+                }
+                
+                // Save directly from temp file to Photos (zero memory copy)
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: tempFileURL)
+                }
+                savedCount += 1
+                
+            } catch {
+                if Task.isCancelled { return }
+                print("Image \(fileNum) download error: \(error.localizedDescription)")
                 failedCount += 1
             }
-            checkAllDownloadsComplete()
+            
+            updateProgress(Float(index + 1) / Float(totalImages))
         }
-    }
-    
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        if totalBytesExpectedToWrite > 0 {
-            var currentPending = 0
-            var currentTotal = 0
-            counterQueue.sync {
-                currentPending = pendingDownloads
-                currentTotal = totalImages
-            }
-            
-            let fileProgress = Float(totalBytesWritten) / Float(totalBytesExpectedToWrite)
-            let completedFiles = currentTotal - currentPending
-            let overallProgress = (Float(completedFiles) + fileProgress) / Float(max(currentTotal, 1))
-            
-            let done = completedFiles + 1
-            let pct = Int(fileProgress * 100)
-            updateProgress(overallProgress)
-            updateStatus("正在下载 (\(done)/\(currentTotal))... \(pct)%")
+        
+        session.invalidateAndCancel()
+        
+        // Show final result
+        if savedCount > 0 {
+            showSuccess(saved: savedCount, total: totalImages)
+        } else {
+            showFailure(message: "下载完成，但未能保存图片到相册\n共 \(failedCount) 张失败", canRetry: true)
         }
     }
 }

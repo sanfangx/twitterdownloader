@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_cookie_manager/webview_cookie_manager.dart';
+import 'extension_log_page.dart';
 
 const String appGroupId = 'group.com.trollstore.twitterdownloader';
 
@@ -146,6 +147,17 @@ class _SettingsPageState extends State<SettingsPage> {
             leading: Icon(Icons.info_outline, color: Colors.white54),
             title: Text('Twitter 原图下载器'),
             subtitle: Text('v1.0.0', style: TextStyle(color: Colors.white38)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined, color: Colors.white54),
+            title: const Text('查看分享扩展日志'),
+            trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ExtensionLogPage()),
+              );
+            },
           ),
           const ListTile(
             leading: Icon(Icons.description_outlined, color: Colors.white54),

@@ -33,8 +33,32 @@ class ShareViewController: UIViewController {
     // Pan gesture tracking
     private var cardInitialY: CGFloat = 0
 
+    // MARK: - Logger
+    private func extLog(_ message: String) {
+        guard let defaults = UserDefaults(suiteName: appGroupId) else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        let logString = "[\(formatter.string(from: Date()))] \(message)"
+        
+        var logs: [String] = []
+        if let currentLogsJson = defaults.string(forKey: "extension_logs"),
+           let data = currentLogsJson.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            logs = parsed
+        }
+        
+        logs.insert(logString, at: 0) // Prepend so latest is first
+        if logs.count > 100 { logs.removeLast() } // Keep last 100
+        
+        if let newData = try? JSONSerialization.data(withJSONObject: logs),
+           let newJson = String(data: newData, encoding: .utf8) {
+            defaults.set(newJson, forKey: "extension_logs")
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        extLog("Extension Started")
         setupUI()
         animateCardIn()
         startProcess()
@@ -237,10 +261,12 @@ class ShareViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func closeTapped() {
+        extLog("User tapped close")
         dismissExtension()
     }
     
     @objc private func retryTapped() {
+        extLog("User tapped retry")
         guard let tweetId = lastTweetId, let authToken = lastAuthToken, let ct0 = lastCt0 else { return }
         
         // Reset UI to loading state
@@ -277,6 +303,7 @@ class ShareViewController: UIViewController {
     }
     
     private func showSuccess(saved: Int, total: Int) {
+        extLog("showSuccess: \(saved)/\(total)")
         DispatchQueue.main.async {
             // 4. Visual success feedback
             self.activityIndicator.stopAnimating()
@@ -307,6 +334,7 @@ class ShareViewController: UIViewController {
     }
     
     private func showFailure(message: String, canRetry: Bool) {
+        extLog("showFailure: \(message)")
         DispatchQueue.main.async {
             // 4. Visual failure feedback
             self.activityIndicator.stopAnimating()
@@ -338,6 +366,7 @@ class ShareViewController: UIViewController {
     
     // MARK: - Process Flow
     private func startProcess() {
+        extLog("startProcess called")
         guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem,
               let itemProvider = extensionItem.attachments?.first else {
             showFailure(message: "未找到分享内容", canRetry: false)
@@ -345,22 +374,27 @@ class ShareViewController: UIViewController {
         }
 
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+            extLog("Found URL provider")
             itemProvider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { [weak self] (item, error) in
                 if let url = item as? URL {
+                    self?.extLog("Parsed URL: \(url.absoluteString)")
                     self?.processTwitterUrl(url.absoluteString)
                 } else {
                     self?.showFailure(message: "分享的不是有效链接", canRetry: false)
                 }
             }
         } else if itemProvider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+            extLog("Found PlainText provider")
             itemProvider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { [weak self] (item, error) in
                 if let text = item as? String, let url = self?.extractUrl(from: text) {
+                    self?.extLog("Extracted URL from text: \(url)")
                     self?.processTwitterUrl(url)
                 } else {
                     self?.showFailure(message: "未在文本中提取到链接", canRetry: false)
                 }
             }
         } else {
+            extLog("Unsupported provider type")
             showFailure(message: "不支持的分享类型", canRetry: false)
         }
     }
@@ -372,15 +406,24 @@ class ShareViewController: UIViewController {
     }
 
     private func processTwitterUrl(_ urlString: String) {
-        guard let tweetIdMatch = urlString.range(of: "(?<=status/)\\d+", options: .regularExpression),
-              let defaults = UserDefaults(suiteName: appGroupId),
-              let authToken = defaults.string(forKey: "tw_auth_token"),
-              let ct0 = defaults.string(forKey: "tw_ct0") else {
+        guard let tweetIdMatch = urlString.range(of: "(?<=status/)\\d+", options: .regularExpression) else {
+            extLog("Regex failed to match tweet ID from: \(urlString)")
+            showFailure(message: "未找到推文ID", canRetry: false)
+            return
+        }
+        
+        let defaults = UserDefaults(suiteName: appGroupId)
+        let authToken = defaults?.string(forKey: "tw_auth_token") ?? ""
+        let ct0 = defaults?.string(forKey: "tw_ct0") ?? ""
+        
+        if authToken.isEmpty || ct0.isEmpty {
+            extLog("Missing auth_token or ct0 in App Group UserDefaults")
             showFailure(message: "未找到账号配置或链接无效\n请先在主 App 登录", canRetry: false)
             return
         }
         
         let tweetId = String(urlString[tweetIdMatch])
+        extLog("Found tweetId: \(tweetId)")
         
         // Save for retry
         lastTweetId = tweetId
@@ -396,6 +439,7 @@ class ShareViewController: UIViewController {
 
     // MARK: - Fetch tweet data (small JSON, uses standard URLSession)
     private func fetchTweetAndDownloadImages(tweetId: String, authToken: String, ct0: String) async {
+        extLog("Start fetching API for tweet: \(tweetId)")
         let queryId = "2ICDjqPd81tulZcYrtpTuQ"
         let apiUrl = "https://x.com/i/api/graphql/\(queryId)/TweetResultByRestId"
         
@@ -428,6 +472,7 @@ class ShareViewController: UIViewController {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                extLog("API HTTP Error: \(httpResponse.statusCode)")
                 showFailure(message: "API 请求失败: HTTP \(httpResponse.statusCode)", canRetry: true)
                 return
             }
@@ -452,20 +497,25 @@ class ShareViewController: UIViewController {
                     }
                     
                     if imageUrls.isEmpty {
+                        extLog("No photo URLs found in tweet media")
                         showFailure(message: "未在这条推文中找到图片", canRetry: false)
                         return
                     }
                     
+                    extLog("Found \(imageUrls.count) image URLs to download")
                     await downloadImages(urls: imageUrls)
                     
                 } else {
+                    extLog("No media in tweet")
                     showFailure(message: "推文中没有媒体内容", canRetry: false)
                 }
             } else {
+                extLog("Failed to parse JSON or invalid structure")
                 showFailure(message: "解析推文失败\n可能由于 Cookie 过期或权限不足", canRetry: true)
             }
         } catch {
             if Task.isCancelled { return }
+            extLog("API Network Exception: \(error.localizedDescription)")
             showFailure(message: "请求推文数据失败\n\(error.localizedDescription)", canRetry: true)
         }
     }
@@ -477,6 +527,7 @@ class ShareViewController: UIViewController {
     //   doesn't create (it only injects the entitlement via ldid)
     // - Sequential downloads minimize memory pressure in the extension
     private func downloadImages(urls: [URL]) async {
+        extLog("Starting downloadImages for \(urls.count) images")
         totalImages = urls.count
         savedCount = 0
         failedCount = 0
@@ -487,10 +538,14 @@ class ShareViewController: UIViewController {
         let session = URLSession(configuration: .default)
         
         for (index, url) in urls.enumerated() {
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                extLog("Task cancelled during image \(index)")
+                return
+            }
             
             let fileNum = index + 1
             updateStatus("正在下载 (\(fileNum)/\(totalImages))...")
+            extLog("Downloading image \(fileNum): \(url.absoluteString)")
             
             do {
                 var request = URLRequest(url: url)
@@ -502,27 +557,32 @@ class ShareViewController: UIViewController {
                 
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                     let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    print("Image \(fileNum) HTTP error: \(code)")
+                    extLog("Image \(fileNum) HTTP Error: \(code)")
                     failedCount += 1
                     updateProgress(Float(index + 1) / Float(totalImages))
                     continue
                 }
                 
+                extLog("Image \(fileNum) downloaded to temp file. Saving to Photos...")
+                
                 // Save directly from temp file to Photos (zero memory copy)
                 try await PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: tempFileURL)
                 }
+                
+                extLog("Image \(fileNum) saved successfully.")
                 savedCount += 1
                 
             } catch {
                 if Task.isCancelled { return }
-                print("Image \(fileNum) download error: \(error.localizedDescription)")
+                extLog("Image \(fileNum) error: \(error.localizedDescription)")
                 failedCount += 1
             }
             
             updateProgress(Float(index + 1) / Float(totalImages))
         }
         
+        extLog("All downloads finished. Saved: \(savedCount), Failed: \(failedCount)")
         session.invalidateAndCancel()
         
         // Show final result

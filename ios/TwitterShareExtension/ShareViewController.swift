@@ -21,6 +21,7 @@ class ShareViewController: UIViewController {
     private var savedCount: Int = 0
     private var totalImages: Int = 0
     private let maxRetries = 2
+    private let counterQueue = DispatchQueue(label: "com.trollstore.twitterdownloader.counter")
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -288,21 +289,23 @@ class ShareViewController: UIViewController {
     }
     
     private func checkAllDownloadsComplete() {
-        pendingDownloads -= 1
-        
-        let done = totalImages - pendingDownloads
-        updateStatus("已完成 \(done)/\(totalImages)，成功 \(savedCount) 张")
-        
-        if pendingDownloads <= 0 {
-            if savedCount > 0 {
-                updateStatus("✅ 成功保存 \(savedCount)/\(totalImages) 张原图到相册", isFinished: true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    self.bgSession?.finishTasksAndInvalidate()
-                    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+        counterQueue.sync {
+            pendingDownloads -= 1
+            
+            let done = totalImages - pendingDownloads
+            updateStatus("已完成 \(done)/\(totalImages)，成功 \(savedCount) 张")
+            
+            if pendingDownloads <= 0 {
+                if savedCount > 0 {
+                    updateStatus("✅ 成功保存 \(savedCount)/\(totalImages) 张原图到相册", isFinished: true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        self.bgSession?.finishTasksAndInvalidate()
+                        self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                    }
+                } else {
+                    updateStatus("下载完成，但未能保存任何图片到相册", isFinished: true)
+                    bgSession?.finishTasksAndInvalidate()
                 }
-            } else {
-                updateStatus("下载完成，但未能保存任何图片到相册", isFinished: true)
-                bgSession?.finishTasksAndInvalidate()
             }
         }
     }
@@ -320,7 +323,9 @@ extension ShareViewController: URLSessionDownloadDelegate {
             PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: location)
         }) { [weak self] success, error in
             if success {
-                self?.savedCount += 1
+                self?.counterQueue.sync {
+                    self?.savedCount += 1
+                }
             } else {
                 print("Photo save error: \(error?.localizedDescription ?? "unknown")")
             }

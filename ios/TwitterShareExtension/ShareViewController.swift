@@ -14,6 +14,13 @@ class ShareViewController: UIViewController {
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let closeButton = UIButton(type: .system)
     private var downloadTask: Task<Void, Never>?
+    
+    // Background download tracking
+    private var bgSession: URLSession?
+    private var pendingDownloads: Int = 0
+    private var savedCount: Int = 0
+    private var totalImages: Int = 0
+    private let maxRetries = 2
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -107,6 +114,7 @@ class ShareViewController: UIViewController {
     
     @objc private func closeTapped() {
         downloadTask?.cancel()
+        bgSession?.invalidateAndCancel()
         self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
     }
 
@@ -169,11 +177,12 @@ class ShareViewController: UIViewController {
         updateStatus("正在请求推文数据...")
         
         downloadTask = Task {
-            await fetchAndDownload(tweetId: tweetId, authToken: authToken, ct0: ct0)
+            await fetchTweetAndDownloadImages(tweetId: tweetId, authToken: authToken, ct0: ct0)
         }
     }
 
-    private func fetchAndDownload(tweetId: String, authToken: String, ct0: String) async {
+    // MARK: - Fetch tweet data (small JSON, uses standard URLSession — this is fine)
+    private func fetchTweetAndDownloadImages(tweetId: String, authToken: String, ct0: String) async {
         let queryId = "2ICDjqPd81tulZcYrtpTuQ"
         let apiUrl = "https://x.com/i/api/graphql/\(queryId)/TweetResultByRestId"
         
@@ -191,6 +200,7 @@ class ShareViewController: UIViewController {
         
         var request = URLRequest(url: components.url!)
         request.httpMethod = "GET"
+        request.timeoutInterval = 30
         request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "authorization")
         request.setValue("auth_token=\(authToken); ct0=\(ct0);", forHTTPHeaderField: "cookie")
         request.setValue(ct0, forHTTPHeaderField: "x-csrf-token")
@@ -199,10 +209,6 @@ class ShareViewController: UIViewController {
         request.setValue("https://x.com", forHTTPHeaderField: "origin")
         request.setValue("https://x.com/", forHTTPHeaderField: "referer")
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "user-agent")
-        
-        // Use an ephemeral session configuration for image downloads to avoid caching and proxy issues
-        let sessionConfig = URLSessionConfiguration.ephemeral
-        let imageSession = URLSession(configuration: sessionConfig)
         
         do {
             if Task.isCancelled { return }
@@ -223,48 +229,23 @@ class ShareViewController: UIViewController {
                 if let extended = legacy?["extended_entities"] as? [String: Any],
                    let medias = extended["media"] as? [[String: Any]] {
                     
-                    var savedCount = 0
-                    for (index, media) in medias.enumerated() {
-                        if Task.isCancelled { return }
-                        if media["type"] as? String == "photo", let mediaUrl = media["media_url_https"] as? String {
-                            
-                            updateStatus("正在下载图片 (\(index + 1)/\(medias.count))...")
-                            
-                            let origUrlStr = mediaUrl.contains("?format=") ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=orig", options: .regularExpression) : mediaUrl + ":orig"
-                            
-                            if let imgUrl = URL(string: origUrlStr) {
-                                do {
-                                    var imgRequest = URLRequest(url: imgUrl)
-                                    imgRequest.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "user-agent")
-                                    
-                                    // Use download task to save memory and handle large files better
-                                    let (tempUrl, imgResponse) = try await imageSession.download(for: imgRequest)
-                                    
-                                    if let httpResponse = imgResponse as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                                        try await PHPhotoLibrary.shared().performChanges {
-                                            PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: tempUrl)
-                                        }
-                                        savedCount += 1
-                                    } else {
-                                        let statusCode = (imgResponse as? HTTPURLResponse)?.statusCode ?? 0
-                                        updateStatus("图片下载失败 HTTP \(statusCode)", isFinished: false)
-                                    }
-                                } catch {
-                                    updateStatus("下载第\(index + 1)张时出错: \(error.localizedDescription)", isFinished: false)
-                                    // wait 1 second to let user see the error, then continue
-                                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                                }
-                            }
-                        }
+                    let imageUrls = medias.compactMap { media -> URL? in
+                        guard media["type"] as? String == "photo",
+                              let mediaUrl = media["media_url_https"] as? String else { return nil }
+                        let origUrlStr = mediaUrl.contains("?format=")
+                            ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=orig", options: .regularExpression)
+                            : mediaUrl + ":orig"
+                        return URL(string: origUrlStr)
                     }
-                    if savedCount > 0 {
-                        updateStatus("✅ 成功保存 \(savedCount) 张原图到相册", isFinished: true)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
-                        }
-                    } else {
-                        updateStatus("完成，但未能成功下载图片", isFinished: true)
+                    
+                    if imageUrls.isEmpty {
+                        updateStatus("未在这条推文中找到图片", isFinished: true)
+                        return
                     }
+                    
+                    // Use background URLSession for reliable image downloads
+                    startBackgroundDownloads(urls: imageUrls)
+                    
                 } else {
                     updateStatus("推文中没有媒体内容", isFinished: true)
                 }
@@ -272,7 +253,107 @@ class ShareViewController: UIViewController {
                 updateStatus("解析推文失败，可能由于 Cookie 过期或权限不足", isFinished: true)
             }
         } catch {
-            updateStatus("网络请求崩溃: \(error.localizedDescription)", isFinished: true)
+            if Task.isCancelled { return }
+            updateStatus("请求推文数据失败: \(error.localizedDescription)", isFinished: true)
+        }
+    }
+    
+    // MARK: - Background URLSession for image downloads
+    private func startBackgroundDownloads(urls: [URL]) {
+        totalImages = urls.count
+        pendingDownloads = urls.count
+        savedCount = 0
+        
+        updateStatus("正在下载 \(totalImages) 张原图...")
+        
+        // Create a background session that is managed by the system daemon (nsurlsessiond).
+        // This survives extension process suspension/termination.
+        let sessionId = "com.trollstore.twitterdownloader.bg.\(UUID().uuidString)"
+        let config = URLSessionConfiguration.background(withIdentifier: sessionId)
+        config.sharedContainerIdentifier = appGroupId
+        config.sessionSendsLaunchEvents = false  // We don't need to wake the main app
+        config.isDiscretionary = false            // Download immediately, don't wait for "good" conditions
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 120
+        config.httpMaximumConnectionsPerHost = 4
+        
+        bgSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        
+        for url in urls {
+            var request = URLRequest(url: url)
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "user-agent")
+            let task = bgSession!.downloadTask(with: request)
+            task.resume()
+        }
+    }
+    
+    private func checkAllDownloadsComplete() {
+        pendingDownloads -= 1
+        
+        let done = totalImages - pendingDownloads
+        updateStatus("已完成 \(done)/\(totalImages)，成功 \(savedCount) 张")
+        
+        if pendingDownloads <= 0 {
+            if savedCount > 0 {
+                updateStatus("✅ 成功保存 \(savedCount)/\(totalImages) 张原图到相册", isFinished: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    self.bgSession?.finishTasksAndInvalidate()
+                    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                }
+            } else {
+                updateStatus("下载完成，但未能保存任何图片到相册", isFinished: true)
+                bgSession?.finishTasksAndInvalidate()
+            }
+        }
+    }
+}
+
+// MARK: - URLSessionDownloadDelegate
+extension ShareViewController: URLSessionDownloadDelegate {
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // The system provides a temporary file. We must use it before this method returns.
+        // Save directly to Photo Library from the temp file URL (zero memory copy).
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: location)
+        }) { [weak self] success, error in
+            if success {
+                self?.savedCount += 1
+            } else {
+                print("Photo save error: \(error?.localizedDescription ?? "unknown")")
+            }
+            semaphore.signal()
+        }
+        
+        // Wait for photo library to finish — the temp file at `location` is deleted
+        // after this delegate method returns, so we must block until the save completes.
+        semaphore.wait()
+        
+        checkAllDownloadsComplete()
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            let nsError = error as NSError
+            // Don't count cancellations (user tapped close)
+            if nsError.code == NSURLErrorCancelled {
+                return
+            }
+            print("Download failed: \(error.localizedDescription)")
+            checkAllDownloadsComplete()
+        }
+        // If error is nil, didFinishDownloadingTo was already called — do nothing here.
+    }
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        // Optional: show per-file progress
+        if totalBytesExpectedToWrite > 0 {
+            let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            let done = totalImages - pendingDownloads
+            let pct = Int(progress * 100)
+            updateStatus("正在下载 (\(done + 1)/\(totalImages))... \(pct)%")
         }
     }
 }

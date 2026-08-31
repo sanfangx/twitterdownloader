@@ -240,7 +240,7 @@ class _TokenSettingsPageState extends State<TokenSettingsPage> {
                       style: const TextStyle(fontWeight: FontWeight.w500)),
                   subtitle: Text(
                     _isAuthenticated
-                        ? 'auth_token: ${_authToken!.length > 8 ? '${_authToken!.substring(0, 8)}...' : _authToken}\nct0: ${_ct0!.length > 8 ? '${_ct0!.substring(0, 8)}...' : _ct0}'
+                        ? 'auth_token: $_authToken\nct0: $_ct0'
                         : '请配置以进行下载',
                     style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
                   ),

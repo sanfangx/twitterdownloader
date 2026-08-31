@@ -163,14 +163,12 @@ class _DownloadPageState extends State<DownloadPage> {
     final bool busy = _isParsing || _isDownloading;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Twitter 原图下载'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // URL text field
             TextField(
               controller: _urlController,
@@ -433,7 +431,8 @@ class _DownloadPageState extends State<DownloadPage> {
                   ],
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

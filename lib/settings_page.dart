@@ -17,48 +17,45 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
-      appBar: AppBar(
-        title: const Text('设置'),
-        backgroundColor: const Color(0xFF000000),
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        children: [
-          _buildCard([
-            _buildListItem(
-              context,
-              icon: Icons.vpn_key,
-              iconColor: Colors.blue,
-              title: 'Token 设置',
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const TokenSettingsPage())),
-            ),
-            const Divider(height: 1, indent: 56, color: Colors.white10),
-            _buildListItem(
-              context,
-              icon: Icons.download,
-              iconColor: Colors.green,
-              title: '下载设置',
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const DownloadSettingsPage())),
-            ),
-            const Divider(height: 1, indent: 56, color: Colors.white10),
-            _buildListItem(
-              context,
-              icon: Icons.info_outline,
-              iconColor: Colors.orange,
-              title: '关于 & 帮助',
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AboutPage())),
-            ),
-          ]),
-        ],
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          children: [
+            _buildCard([
+              _buildListItem(
+                context,
+                icon: Icons.vpn_key,
+                iconColor: Colors.blue,
+                title: 'Token 设置',
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const TokenSettingsPage())),
+              ),
+              const Divider(height: 1, indent: 56, color: Colors.white10),
+              _buildListItem(
+                context,
+                icon: Icons.download,
+                iconColor: Colors.green,
+                title: '下载设置',
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const DownloadSettingsPage())),
+              ),
+              const Divider(height: 1, indent: 56, color: Colors.white10),
+              _buildListItem(
+                context,
+                icon: Icons.info_outline,
+                iconColor: Colors.orange,
+                title: '关于 & 帮助',
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AboutPage())),
+              ),
+            ]),
+          ],
+        ),
       ),
     );
   }

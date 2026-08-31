@@ -7,12 +7,20 @@ import 'package:image_gallery_saver/image_gallery_saver.dart';
 class TweetMedia {
   final String mediaUrlHttps;
   final String type;
+  final String tweetId;
+  final String username;
+  final int index; // 1-based index
+  final int totalCount;
   bool selected;
 
   TweetMedia({
     required this.mediaUrlHttps,
     required this.type,
-    this.selected = true,
+    required this.tweetId,
+    required this.username,
+    required this.index,
+    required this.totalCount,
+    this.selected = false, // Requirement 1: default to not selected
   });
 
   String getUrl(String size) {
@@ -30,6 +38,23 @@ class TweetMedia {
 
   String get mediumUrl => getUrl('medium');
   String get origUrl => getUrl('orig');
+
+  String getFilename(String rule) {
+    switch (rule) {
+      case 'tweet_url':
+        // Option: 推文链接 (多张图片就在后面加上1，2，3，4)
+        if (totalCount > 1) {
+          return 'x.com_${username}_status_${tweetId}_$index';
+        }
+        return 'x.com_${username}_status_$tweetId';
+      case 'username_tweetId':
+        // Option: 用户名_推文ID_序号
+        return '${username}_${tweetId}_$index';
+      case 'timestamp':
+      default:
+        return 'twitter_${DateTime.now().millisecondsSinceEpoch}_$index';
+    }
+  }
 }
 
 class TwitterService {
@@ -122,45 +147,61 @@ class TwitterService {
     if (result == null) throw Exception('推文结果为空');
 
     Map<String, dynamic>? legacy;
+    Map<String, dynamic>? core;
     if (result['__typename'] == 'TweetWithVisibilityResults') {
-      legacy = (result['tweet'] as Map<String, dynamic>?)?['legacy']
-          as Map<String, dynamic>?;
+      final tweetObj = result['tweet'] as Map<String, dynamic>?;
+      legacy = tweetObj?['legacy'] as Map<String, dynamic>?;
+      core = tweetObj?['core'] as Map<String, dynamic>?;
     } else {
       legacy = result['legacy'] as Map<String, dynamic>?;
+      core = result['core'] as Map<String, dynamic>?;
     }
 
     if (legacy == null) throw Exception('无法解析推文内容');
+
+    final userResult = (core?['user_results'] as Map<String, dynamic>?)?['result'] as Map<String, dynamic>?;
+    final userLegacy = userResult?['legacy'] as Map<String, dynamic>?;
+    final username = (userLegacy?['screen_name'] ?? userResult?['screen_name'] ?? 'twitter_user') as String;
 
     final extendedEntities =
         legacy['extended_entities'] as Map<String, dynamic>?;
     if (extendedEntities == null) throw Exception('该推文没有媒体内容');
 
-    final mediaList = extendedEntities['media'] as List?;
-    if (mediaList == null || mediaList.isEmpty) throw Exception('未找到图片');
+    final rawMediaList = extendedEntities['media'] as List?;
+    if (rawMediaList == null || rawMediaList.isEmpty) throw Exception('未找到图片');
 
-    return mediaList
-        .where((m) => m['type'] == 'photo')
-        .map((m) => TweetMedia(
-              mediaUrlHttps: m['media_url_https'] as String,
-              type: m['type'] as String,
-            ))
-        .toList();
+    final photoList = rawMediaList.where((m) => m['type'] == 'photo').toList();
+    final totalCount = photoList.length;
+
+    return List.generate(totalCount, (i) {
+      final m = photoList[i];
+      return TweetMedia(
+        mediaUrlHttps: m['media_url_https'] as String,
+        type: m['type'] as String,
+        tweetId: tweetId,
+        username: username,
+        index: i + 1,
+        totalCount: totalCount,
+        selected: false,
+      );
+    });
   }
 
   static Future<int> downloadAndSaveImages(List<TweetMedia> mediaList) async {
     final prefs = await SharedPreferences.getInstance();
     final quality = prefs.getString('tw_download_quality') ?? 'orig';
-    
+    final rule = prefs.getString('tw_filename_rule') ?? 'username_tweetId';
+
     int savedCount = 0;
     for (final media in mediaList) {
       try {
         final response = await http.get(Uri.parse(media.getUrl(quality)));
         if (response.statusCode == 200) {
+          final fileName = media.getFilename(rule);
           final result = await ImageGallerySaver.saveImage(
             Uint8List.fromList(response.bodyBytes),
             quality: 100,
-            name:
-                'twitter_${DateTime.now().millisecondsSinceEpoch}_$savedCount',
+            name: fileName,
           );
           if (result != null && result['isSuccess'] == true) {
             savedCount++;

@@ -266,17 +266,19 @@ class DownloadSettingsPage extends StatefulWidget {
 
 class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
   String _selectedQuality = 'orig';
+  String _selectedNamingRule = 'username_tweetId';
 
   @override
   void initState() {
     super.initState();
-    _loadQuality();
+    _loadSettings();
   }
 
-  Future<void> _loadQuality() async {
+  Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _selectedQuality = prefs.getString('tw_download_quality') ?? 'orig';
+      _selectedNamingRule = prefs.getString('tw_filename_rule') ?? 'username_tweetId';
     });
   }
 
@@ -293,12 +295,34 @@ class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
     }
   }
 
+  Future<void> _saveNamingRule(String rule) async {
+    setState(() {
+      _selectedNamingRule = rule;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('tw_filename_rule', rule);
+    try {
+      await SharedPreferenceAppGroup.setString('tw_filename_rule', rule);
+    } catch (e) {
+      debugPrint('AppGroup save naming rule error: $e');
+    }
+  }
+
   Widget _buildQualityOption(String title, String subtitle, String value) {
     return ListTile(
       title: Text(title),
       subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 13)),
       trailing: _selectedQuality == value ? const Icon(Icons.check, color: Colors.blue) : null,
       onTap: () => _saveQuality(value),
+    );
+  }
+
+  Widget _buildNamingOption(String title, String subtitle, String value) {
+    return ListTile(
+      title: Text(title),
+      subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+      trailing: _selectedNamingRule == value ? const Icon(Icons.check, color: Colors.blue) : null,
+      onTap: () => _saveNamingRule(value),
     );
   }
 
@@ -314,11 +338,11 @@ class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 8),
+          const Padding(
+            padding: EdgeInsets.only(left: 8, bottom: 8),
             child: Text(
               '下载清晰度',
-              style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+              style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ),
           Container(
@@ -336,6 +360,31 @@ class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
               ],
             ),
           ),
+
+          const SizedBox(height: 24),
+          const Padding(
+            padding: EdgeInsets.only(left: 8, bottom: 8),
+            child: Text(
+              '保存文件名规则',
+              style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                _buildNamingOption('用户名_推文ID_序号', '例如: artina328_2093726682_1.jpg', 'username_tweetId'),
+                const Divider(height: 1, indent: 16, color: Colors.white10),
+                _buildNamingOption('推文链接', '多图末尾附带序号，例如: x.com_artina328_status_2093726682_1.jpg', 'tweet_url'),
+                const Divider(height: 1, indent: 16, color: Colors.white10),
+                _buildNamingOption('默认 (时间戳)', '例如: twitter_1788106112_1.jpg', 'timestamp'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );

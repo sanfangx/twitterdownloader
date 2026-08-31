@@ -484,6 +484,11 @@ class ShareViewController: UIViewController {
                
                 let legacy = (result["__typename"] as? String == "TweetWithVisibilityResults" ? (result["tweet"] as? [String: Any])?["legacy"] : result["legacy"]) as? [String: Any]
                 
+                let core = (result["__typename"] as? String == "TweetWithVisibilityResults" ? (result["tweet"] as? [String: Any])?["core"] : result["core"]) as? [String: Any]
+                let userResult = (core?["user_results"] as? [String: Any])?["result"] as? [String: Any]
+                let userLegacy = userResult?["legacy"] as? [String: Any]
+                let username = (userLegacy?["screen_name"] ?? userResult?["screen_name"] ?? "twitter_user") as? String ?? "twitter_user"
+                
                 if let extended = legacy?["extended_entities"] as? [String: Any],
                    let medias = extended["media"] as? [[String: Any]] {
                     
@@ -505,7 +510,7 @@ class ShareViewController: UIViewController {
                     }
                     
                     extLog("Found \(imageUrls.count) image URLs to download")
-                    await downloadImages(urls: imageUrls)
+                    await downloadImages(urls: imageUrls, tweetId: tweetId, username: username)
                     
                 } else {
                     extLog("No media in tweet")
@@ -528,7 +533,7 @@ class ShareViewController: UIViewController {
     // - Background sessions require a real App Group container on disk, which TrollStore
     //   doesn't create (it only injects the entitlement via ldid)
     // - Sequential downloads minimize memory pressure in the extension
-    private func downloadImages(urls: [URL]) async {
+    private func downloadImages(urls: [URL], tweetId: String, username: String) async {
         extLog("Starting downloadImages for \(urls.count) images")
         totalImages = urls.count
         savedCount = 0
@@ -538,6 +543,7 @@ class ShareViewController: UIViewController {
         updateProgress(0)
         
         let session = URLSession(configuration: .default)
+        let rule = UserDefaults(suiteName: appGroupId)?.string(forKey: "tw_filename_rule") ?? "username_tweetId"
         
         for (index, url) in urls.enumerated() {
             if Task.isCancelled {
@@ -568,8 +574,19 @@ class ShareViewController: UIViewController {
                 let mimeType = response.mimeType ?? "image/jpeg"
                 let ext = mimeType == "image/png" ? "png" : "jpg"
                 
+                var fileNamePrefix = "twitter_\(Int(Date().timeIntervalSince1970))_\(fileNum)"
+                if rule == "tweet_url" {
+                    if totalImages > 1 {
+                        fileNamePrefix = "x.com_\(username)_status_\(tweetId)_\(fileNum)"
+                    } else {
+                        fileNamePrefix = "x.com_\(username)_status_\(tweetId)"
+                    }
+                } else if rule == "username_tweetId" {
+                    fileNamePrefix = "\(username)_\(tweetId)_\(fileNum)"
+                }
+                
                 let fileManager = FileManager.default
-                let destURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".\(ext)")
+                let destURL = fileManager.temporaryDirectory.appendingPathComponent("\(fileNamePrefix).\(ext)")
                 
                 if fileManager.fileExists(atPath: destURL.path) {
                     try fileManager.removeItem(at: destURL)

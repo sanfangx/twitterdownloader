@@ -144,6 +144,19 @@ class _DownloadPageState extends State<DownloadPage> {
     }
   }
 
+  void _openPreview(int initialIndex) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImagePreviewGallery(
+          mediaList: _parsedMedia,
+          initialIndex: initialIndex,
+          onSelectionChanged: () => setState(() {}),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedCount = _parsedMedia.where((m) => m.selected).length;
@@ -201,7 +214,7 @@ class _DownloadPageState extends State<DownloadPage> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: Colors.blue.withOpacity(0.3),
+                disabledBackgroundColor: Colors.blue.withValues(alpha: 0.3),
               ),
             ),
             const SizedBox(height: 12),
@@ -248,6 +261,54 @@ class _DownloadPageState extends State<DownloadPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Selection toolbar
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        children: [
+                          Text(
+                            '已选 $selectedCount / ${_parsedMedia.length} 张',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                for (var m in _parsedMedia) {
+                                  m.selected = true;
+                                }
+                              });
+                            },
+                            icon: const Icon(Icons.select_all, size: 16),
+                            label: const Text('全选', style: TextStyle(fontSize: 13)),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                for (var m in _parsedMedia) {
+                                  m.selected = !m.selected;
+                                }
+                              });
+                            },
+                            icon: const Icon(Icons.swap_horiz, size: 16),
+                            label: const Text('反选', style: TextStyle(fontSize: 13)),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     Expanded(
                       child: GridView.builder(
                         gridDelegate:
@@ -260,11 +321,7 @@ class _DownloadPageState extends State<DownloadPage> {
                         itemBuilder: (context, index) {
                           final media = _parsedMedia[index];
                           return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                media.selected = !media.selected;
-                              });
-                            },
+                            onTap: () => _openPreview(index),
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
@@ -299,29 +356,57 @@ class _DownloadPageState extends State<DownloadPage> {
                                 if (!media.selected)
                                   Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.6),
+                                      color: Colors.black.withValues(alpha: 0.5),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                // Selection indicator
+                                // Preview hint icon in bottom-left
+                                Positioned(
+                                  bottom: 6,
+                                  left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.zoom_in, size: 14, color: Colors.white70),
+                                        SizedBox(width: 2),
+                                        Text('预览', style: TextStyle(fontSize: 10, color: Colors.white70)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                // Selection indicator in top-right
                                 Positioned(
                                   top: 6,
                                   right: 6,
-                                  child: Container(
-                                    width: 26,
-                                    height: 26,
-                                    decoration: BoxDecoration(
-                                      color: media.selected
-                                          ? Colors.blue
-                                          : Colors.black54,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: Colors.white, width: 1.5),
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      setState(() {
+                                        media.selected = !media.selected;
+                                      });
+                                    },
+                                    child: Container(
+                                      width: 28,
+                                      height: 28,
+                                      decoration: BoxDecoration(
+                                        color: media.selected
+                                            ? Colors.blue
+                                            : Colors.black54,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: Colors.white, width: 1.5),
+                                      ),
+                                      child: media.selected
+                                          ? const Icon(Icons.check,
+                                              size: 18, color: Colors.white)
+                                          : null,
                                     ),
-                                    child: media.selected
-                                        ? const Icon(Icons.check,
-                                            size: 16, color: Colors.white)
-                                        : null,
                                   ),
                                 ),
                               ],
@@ -342,7 +427,7 @@ class _DownloadPageState extends State<DownloadPage> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: Colors.green.withOpacity(0.3),
+                        disabledBackgroundColor: Colors.green.withValues(alpha: 0.3),
                       ),
                     ),
                   ],
@@ -358,5 +443,113 @@ class _DownloadPageState extends State<DownloadPage> {
   void dispose() {
     _urlController.dispose();
     super.dispose();
+  }
+}
+
+// =======================
+// Fullscreen Gallery Preview
+// =======================
+class ImagePreviewGallery extends StatefulWidget {
+  final List<TweetMedia> mediaList;
+  final int initialIndex;
+  final VoidCallback onSelectionChanged;
+
+  const ImagePreviewGallery({
+    super.key,
+    required this.mediaList,
+    required this.initialIndex,
+    required this.onSelectionChanged,
+  });
+
+  @override
+  State<ImagePreviewGallery> createState() => _ImagePreviewGalleryState();
+}
+
+class _ImagePreviewGalleryState extends State<ImagePreviewGallery> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentMedia = widget.mediaList[_currentIndex];
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black.withValues(alpha: 0.6),
+        elevation: 0,
+        title: Text(
+          '${_currentIndex + 1} / ${widget.mediaList.length}',
+          style: const TextStyle(fontSize: 16),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              currentMedia.selected
+                  ? Icons.check_circle
+                  : Icons.radio_button_unchecked,
+              color: currentMedia.selected ? Colors.blue : Colors.white70,
+              size: 26,
+            ),
+            onPressed: () {
+              setState(() {
+                currentMedia.selected = !currentMedia.selected;
+              });
+              widget.onSelectionChanged();
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.mediaList.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        itemBuilder: (context, index) {
+          final media = widget.mediaList[index];
+          return Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 5.0,
+              child: Image.network(
+                media.origUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  final total = loadingProgress.expectedTotalBytes;
+                  final loaded = loadingProgress.cumulativeBytesLoaded;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: total != null ? loaded / total : null,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stack) => const Center(
+                  child: Icon(Icons.broken_image,
+                      color: Colors.white38, size: 48),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

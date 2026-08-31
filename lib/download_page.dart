@@ -259,54 +259,6 @@ class _DownloadPageState extends State<DownloadPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Selection toolbar
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Row(
-                        children: [
-                          Text(
-                            '已选 $selectedCount / ${_parsedMedia.length} 张',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                for (var m in _parsedMedia) {
-                                  m.selected = true;
-                                }
-                              });
-                            },
-                            icon: const Icon(Icons.select_all, size: 16),
-                            label: const Text('全选', style: TextStyle(fontSize: 13)),
-                            style: TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                for (var m in _parsedMedia) {
-                                  m.selected = !m.selected;
-                                }
-                              });
-                            },
-                            icon: const Icon(Icons.swap_horiz, size: 16),
-                            label: const Text('反选', style: TextStyle(fontSize: 13)),
-                            style: TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                     Expanded(
                       child: GridView.builder(
                         gridDelegate:
@@ -350,14 +302,6 @@ class _DownloadPageState extends State<DownloadPage> {
                                     },
                                   ),
                                 ),
-                                // Dim overlay when deselected
-                                if (!media.selected)
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.5),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
                                 // Preview hint icon in bottom-left
                                 Positioned(
                                   bottom: 6,
@@ -378,10 +322,10 @@ class _DownloadPageState extends State<DownloadPage> {
                                     ),
                                   ),
                                 ),
-                                // Selection indicator in top-right
+                                // Selection indicator in top-right with large hit area
                                 Positioned(
-                                  top: 6,
-                                  right: 6,
+                                  top: 0,
+                                  right: 0,
                                   child: GestureDetector(
                                     behavior: HitTestBehavior.opaque,
                                     onTap: () {
@@ -390,20 +334,26 @@ class _DownloadPageState extends State<DownloadPage> {
                                       });
                                     },
                                     child: Container(
-                                      width: 28,
-                                      height: 28,
-                                      decoration: BoxDecoration(
-                                        color: media.selected
-                                            ? Colors.blue
-                                            : Colors.black54,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                            color: Colors.white, width: 1.5),
+                                      width: 60,
+                                      height: 60,
+                                      alignment: Alignment.topRight,
+                                      padding: const EdgeInsets.all(6),
+                                      child: Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: media.selected
+                                              ? Colors.blue
+                                              : Colors.black54,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                              color: Colors.white, width: 1.5),
+                                        ),
+                                        child: media.selected
+                                            ? const Icon(Icons.check,
+                                                size: 18, color: Colors.white)
+                                            : null,
                                       ),
-                                      child: media.selected
-                                          ? const Icon(Icons.check,
-                                              size: 18, color: Colors.white)
-                                          : null,
                                     ),
                                   ),
                                 ),
@@ -413,20 +363,52 @@ class _DownloadPageState extends State<DownloadPage> {
                         },
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: (_isDownloading || selectedCount == 0)
-                          ? null
-                          : _downloadSelected,
-                      icon: const Icon(Icons.download, size: 18),
-                      label: Text(
-                          '下载选中 ($selectedCount/${_parsedMedia.length})'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: Colors.green.withValues(alpha: 0.3),
-                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              for (var m in _parsedMedia) {
+                                m.selected = true;
+                              }
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          child: const Text('全选', style: TextStyle(fontSize: 14)),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              for (var m in _parsedMedia) {
+                                m.selected = !m.selected;
+                              }
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          child: const Text('反选', style: TextStyle(fontSize: 14)),
+                        ),
+                        const Spacer(),
+                        ElevatedButton.icon(
+                          onPressed: (_isDownloading || selectedCount == 0)
+                              ? null
+                              : _downloadSelected,
+                          icon: const Icon(Icons.download, size: 18),
+                          label: Text('下载 ($selectedCount/${_parsedMedia.length})'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.green.withValues(alpha: 0.3),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

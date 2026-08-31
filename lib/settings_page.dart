@@ -85,106 +85,156 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
         title: const Text('设置'),
+        backgroundColor: const Color(0xFF000000),
+        elevation: 0,
       ),
       body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          const SizedBox(height: 8),
-          // ---- Account section ----
           _buildSectionHeader('账号'),
-          ListTile(
-            leading: Icon(
-              _isAuthenticated ? Icons.check_circle : Icons.error_outline,
-              color: _isAuthenticated ? Colors.greenAccent : Colors.orange,
-            ),
-            title: Text(_isAuthenticated ? '已登录 Twitter' : '未登录'),
-            subtitle: Text(
-              _isAuthenticated
-                  ? 'Auth Token: ${_authToken!.substring(0, 8)}...'
-                  : '需要登录才能下载图片',
-              style: const TextStyle(color: Colors.white38),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: _isAuthenticated
-                ? OutlinedButton.icon(
-                    onPressed: _clearAuth,
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: const Text('退出登录'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                      side: const BorderSide(color: Colors.redAccent),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  )
-                : ElevatedButton.icon(
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const LoginWebView()),
-                      );
-                      if (result == true) {
-                        _checkAuthStatus();
-                      }
-                    },
-                    icon: const Icon(Icons.login, size: 18),
-                    label: const Text('登录 Twitter'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+          _buildCard(
+            children: [
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: _isAuthenticated ? Colors.green : Colors.orange,
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(
+                    _isAuthenticated ? Icons.person : Icons.person_outline,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                title: Text(_isAuthenticated ? '已登录 Twitter' : '未登录', style: const TextStyle(fontWeight: FontWeight.w500)),
+                subtitle: Text(
+                  _isAuthenticated
+                      ? 'Auth Token: ${_authToken!.substring(0, 8)}...'
+                      : '需要登录才能下载图片',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ),
+              const Divider(height: 1, indent: 56, color: Colors.white10),
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: _isAuthenticated
+                    ? ElevatedButton(
+                        onPressed: _clearAuth,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent.withOpacity(0.1),
+                          foregroundColor: Colors.redAccent,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('退出登录', style: TextStyle(fontWeight: FontWeight.w600)),
+                      )
+                    : ElevatedButton(
+                        onPressed: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginWebView()),
+                          );
+                          if (result == true) {
+                            _checkAuthStatus();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('登录 Twitter', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+              ),
+            ],
           ),
-          const Divider(height: 32),
-
-          // ---- About section ----
-          _buildSectionHeader('关于'),
-          const ListTile(
-            leading: Icon(Icons.info_outline, color: Colors.white54),
-            title: Text('Twitter 原图下载器'),
-            subtitle: Text('v1.0.0', style: TextStyle(color: Colors.white38)),
+          
+          const SizedBox(height: 24),
+          _buildSectionHeader('关于 & 帮助'),
+          _buildCard(
+            children: [
+              ListTile(
+                leading: _buildIcon(Icons.info_outline, Colors.blue),
+                title: const Text('Twitter 原图下载器', style: TextStyle(fontWeight: FontWeight.w500)),
+                trailing: const Text('v1.0.0', style: TextStyle(color: Colors.white54, fontSize: 15)),
+              ),
+              const Divider(height: 1, indent: 56, color: Colors.white10),
+              ListTile(
+                leading: _buildIcon(Icons.bug_report, Colors.orange),
+                title: const Text('查看分享扩展日志', style: TextStyle(fontWeight: FontWeight.w500)),
+                trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ExtensionLogPage()),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 56, color: Colors.white10),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('使用说明', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                    SizedBox(height: 8),
+                    Text(
+                      '1. 在设置中登录 Twitter 账号\n'
+                      '2. 在主页粘贴推文链接并解析下载\n'
+                      '3. 或在推特官方客户端中，点击分享，选择本应用，即可直接通过弹窗后台下载原图。',
+                      style: TextStyle(color: Colors.white54, height: 1.5, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.bug_report_outlined, color: Colors.white54),
-            title: const Text('查看分享扩展日志'),
-            trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ExtensionLogPage()),
-              );
-            },
-          ),
-          const ListTile(
-            leading: Icon(Icons.description_outlined, color: Colors.white54),
-            title: Text('使用说明'),
-            subtitle: Text(
-              '1. 在设置中登录 Twitter 账号\n'
-              '2. 在下载页面粘贴推文链接\n'
-              '3. 点击「解析」预览并选择图片\n'
-              '4. 点击「下载」保存原图到相册\n\n'
-              '也可以从推特分享推文到本软件直接下载',
-              style: TextStyle(color: Colors.white38, height: 1.5),
-            ),
-          ),
+          const SizedBox(height: 40),
         ],
       ),
     );
   }
 
+  Widget _buildCard({required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildIcon(IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, color: Colors.white, size: 20),
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.only(left: 16, bottom: 8, top: 8),
       child: Text(
-        title,
+        title.toUpperCase(),
         style: const TextStyle(
-          color: Colors.blue,
+          color: Colors.white54,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );

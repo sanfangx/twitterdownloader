@@ -16,12 +16,13 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _isDownloading = false;
   String _statusMessage = '';
 
-  Future<void> _pasteFromClipboard() async {
+  Future<void> _pasteAndParse() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text != null && data!.text!.isNotEmpty) {
       setState(() {
         _urlController.text = data.text!;
       });
+      await _parseUrl();
     } else {
       setState(() => _statusMessage = '剪贴板为空');
     }
@@ -180,31 +181,14 @@ class _DownloadPageState extends State<DownloadPage> {
             ),
             const SizedBox(height: 12),
 
-            // Paste + Parse buttons
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: busy ? null : _pasteFromClipboard,
-                    icon: const Icon(Icons.content_paste, size: 18),
-                    label: const Text('粘贴'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: busy ? null : _parseUrl,
-                    icon: const Icon(Icons.search, size: 18),
-                    label: const Text('解析'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-              ],
+            // Paste & Parse button
+            ElevatedButton.icon(
+              onPressed: busy ? null : _pasteAndParse,
+              icon: const Icon(Icons.content_paste_search, size: 18),
+              label: const Text('粘贴并解析'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
             ),
             const SizedBox(height: 12),
 

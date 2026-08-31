@@ -325,8 +325,8 @@ class ShareViewController: UIViewController {
             self.closeButton.setTitle("完成", for: .normal)
         }
         
-        // Auto-close after 1.5s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        // Auto-close after 1.0s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.animateCardOut {
                 self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             }

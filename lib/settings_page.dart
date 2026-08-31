@@ -28,13 +28,13 @@ class SettingsPage extends StatelessWidget {
           _buildCard([
             _buildListItem(
               context,
-              icon: Icons.person,
+              icon: Icons.vpn_key,
               iconColor: Colors.blue,
-              title: '账号设置',
+              title: 'Token 设置',
               onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const AccountSettingsPage())),
+                      builder: (_) => const TokenSettingsPage())),
             ),
             const Divider(height: 1, indent: 56, color: Colors.white10),
             _buildListItem(
@@ -96,16 +96,16 @@ class SettingsPage extends StatelessWidget {
 }
 
 // =======================
-// Account Settings Page
+// Token Settings Page
 // =======================
-class AccountSettingsPage extends StatefulWidget {
-  const AccountSettingsPage({super.key});
+class TokenSettingsPage extends StatefulWidget {
+  const TokenSettingsPage({super.key});
 
   @override
-  State<AccountSettingsPage> createState() => _AccountSettingsPageState();
+  State<TokenSettingsPage> createState() => _TokenSettingsPageState();
 }
 
-class _AccountSettingsPageState extends State<AccountSettingsPage> {
+class _TokenSettingsPageState extends State<TokenSettingsPage> {
   bool _isAuthenticated = false;
   String? _authToken;
   String? _ct0;
@@ -127,40 +127,80 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     });
   }
 
-  Future<void> _clearAuth() async {
-    final bool? confirmed = await showDialog<bool>(
+  Future<void> _openWebLogin() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginWebView()),
+    );
+    if (result == true) {
+      _checkAuthStatus();
+    }
+  }
+
+  Future<void> _openManualEdit() async {
+    final authController = TextEditingController(text: _authToken);
+    final ct0Controller = TextEditingController(text: _ct0);
+
+    final bool? saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('确认退出'),
-        content: const Text('退出后需要重新登录才能下载图片。'),
+        title: const Text('直接修改 Token'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: authController,
+              decoration: const InputDecoration(
+                labelText: 'auth_token',
+                hintText: '输入 auth_token',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ct0Controller,
+              decoration: const InputDecoration(
+                labelText: 'ct0 (CSRF Token)',
+                hintText: '输入 ct0',
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('退出', style: TextStyle(color: Colors.red)),
+            onPressed: () async {
+              final newAuth = authController.text.trim();
+              final newCt0 = ct0Controller.text.trim();
+              if (newAuth.isNotEmpty && newCt0.isNotEmpty) {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('tw_auth_token', newAuth);
+                await prefs.setString('tw_ct0', newCt0);
+                try {
+                  await SharedPreferenceAppGroup.setString('tw_auth_token', newAuth);
+                  await SharedPreferenceAppGroup.setString('tw_ct0', newCt0);
+                } catch (e) {
+                  debugPrint('Error saving to app group: $e');
+                }
+                if (!context.mounted) return;
+                Navigator.pop(context, true);
+              }
+            },
+            child: const Text('保存', style: TextStyle(color: Colors.blue)),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('tw_auth_token');
-      await prefs.remove('tw_ct0');
-      try {
-        await SharedPreferenceAppGroup.remove('tw_auth_token');
-        await SharedPreferenceAppGroup.remove('tw_ct0');
-      } catch (e) {
-        debugPrint('Error removing from app group: $e');
+    if (saved == true) {
+      _checkAuthStatus();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('配置已更新')),
+        );
       }
-      setState(() {
-        _isAuthenticated = false;
-        _authToken = null;
-        _ct0 = null;
-      });
     }
   }
 
@@ -169,7 +209,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
-        title: const Text('账号设置'),
+        title: const Text('Token 设置'),
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
       ),
@@ -191,59 +231,55 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      _isAuthenticated ? Icons.person : Icons.person_outline,
+                      _isAuthenticated ? Icons.vpn_key : Icons.vpn_key_outlined,
                       color: Colors.white,
                       size: 20,
                     ),
                   ),
-                  title: Text(_isAuthenticated ? '已登录 Twitter' : '未登录',
+                  title: Text(_isAuthenticated ? '已配置 Token' : '未配置 Token',
                       style: const TextStyle(fontWeight: FontWeight.w500)),
                   subtitle: Text(
                     _isAuthenticated
-                        ? 'Auth Token: ${_authToken!.substring(0, 8)}...'
-                        : '需要登录才能下载图片',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                        ? 'auth_token: ${_authToken!.length > 8 ? '${_authToken!.substring(0, 8)}...' : _authToken}\nct0: ${_ct0!.length > 8 ? '${_ct0!.substring(0, 8)}...' : _ct0}'
+                        : '请配置以进行下载',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
                   ),
                 ),
                 const Divider(height: 1, indent: 56, color: Colors.white10),
                 Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: _isAuthenticated
-                      ? ElevatedButton(
-                          onPressed: _clearAuth,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent.withOpacity(0.1),
-                            foregroundColor: Colors.redAccent,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
-                          child: const Text('退出登录',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                        )
-                      : ElevatedButton(
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => const LoginWebView()),
-                            );
-                            if (result == true) {
-                              _checkAuthStatus();
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
-                          child: const Text('登录 Twitter',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _openWebLogin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
+                        child: const Text('网页登录提取',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _openManualEdit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white12,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('直接修改配置',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

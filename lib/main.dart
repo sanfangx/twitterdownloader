@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preference_app_group/shared_preference_app_group.dart';
 import 'download_page.dart';
 import 'settings_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SharedPreferenceAppGroup.setAppGroup('group.com.trollstore.twitterdownloader');
   runApp(const MyApp());
 }
 

@@ -148,10 +148,13 @@ class TwitterService {
   }
 
   static Future<int> downloadAndSaveImages(List<TweetMedia> mediaList) async {
+    final prefs = await SharedPreferences.getInstance();
+    final quality = prefs.getString('tw_download_quality') ?? 'orig';
+    
     int savedCount = 0;
     for (final media in mediaList) {
       try {
-        final response = await http.get(Uri.parse(media.origUrl));
+        final response = await http.get(Uri.parse(media.getUrl(quality)));
         if (response.statusCode == 200) {
           final result = await ImageGallerySaver.saveImage(
             Uint8List.fromList(response.bodyBytes),

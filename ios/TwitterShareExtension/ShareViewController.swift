@@ -487,13 +487,15 @@ class ShareViewController: UIViewController {
                 if let extended = legacy?["extended_entities"] as? [String: Any],
                    let medias = extended["media"] as? [[String: Any]] {
                     
+                    let quality = UserDefaults(suiteName: appGroupId)?.string(forKey: "tw_download_quality") ?? "orig"
+                    
                     let imageUrls = medias.compactMap { media -> URL? in
                         guard media["type"] as? String == "photo",
                               let mediaUrl = media["media_url_https"] as? String else { return nil }
-                        let origUrlStr = mediaUrl.contains("?format=")
-                            ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=orig", options: .regularExpression)
-                            : mediaUrl + ":orig"
-                        return URL(string: origUrlStr)
+                        let destUrlStr = mediaUrl.contains("?format=")
+                            ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=\(quality)", options: .regularExpression)
+                            : mediaUrl + ":\(quality)"
+                        return URL(string: destUrlStr)
                     }
                     
                     if imageUrls.isEmpty {

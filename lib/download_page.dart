@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'twitter_service.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -15,6 +16,24 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _isParsing = false;
   bool _isDownloading = false;
   String _statusMessage = '';
+  String _gridQuality = 'medium';
+  String _previewQuality = 'orig';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _gridQuality = prefs.getString('tw_grid_quality') ?? 'medium';
+        _previewQuality = prefs.getString('tw_preview_quality') ?? 'orig';
+      });
+    }
+  }
 
   Future<void> _pasteAndParse() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
@@ -151,6 +170,7 @@ class _DownloadPageState extends State<DownloadPage> {
         builder: (_) => ImagePreviewGallery(
           mediaList: _parsedMedia,
           initialIndex: initialIndex,
+          previewQuality: _previewQuality,
           onSelectionChanged: () => setState(() {}),
         ),
       ),
@@ -278,7 +298,7 @@ class _DownloadPageState extends State<DownloadPage> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: Image.network(
-                                    media.mediumUrl,
+                                    media.getUrl(_gridQuality),
                                     fit: BoxFit.cover,
                                     loadingBuilder:
                                         (context, child, loadingProgress) {
@@ -300,26 +320,6 @@ class _DownloadPageState extends State<DownloadPage> {
                                         ),
                                       );
                                     },
-                                  ),
-                                ),
-                                // Preview hint icon in bottom-left
-                                Positioned(
-                                  bottom: 6,
-                                  left: 6,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.zoom_in, size: 14, color: Colors.white70),
-                                        SizedBox(width: 2),
-                                        Text('预览', style: TextStyle(fontSize: 10, color: Colors.white70)),
-                                      ],
-                                    ),
                                   ),
                                 ),
                                 // Selection indicator in top-right with large hit area
@@ -433,12 +433,14 @@ class _DownloadPageState extends State<DownloadPage> {
 class ImagePreviewGallery extends StatefulWidget {
   final List<TweetMedia> mediaList;
   final int initialIndex;
+  final String previewQuality;
   final VoidCallback onSelectionChanged;
 
   const ImagePreviewGallery({
     super.key,
     required this.mediaList,
     required this.initialIndex,
+    this.previewQuality = 'orig',
     required this.onSelectionChanged,
   });
 
@@ -510,7 +512,7 @@ class _ImagePreviewGalleryState extends State<ImagePreviewGallery> {
               minScale: 0.8,
               maxScale: 5.0,
               child: Image.network(
-                media.origUrl,
+                media.getUrl(widget.previewQuality),
                 fit: BoxFit.contain,
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;

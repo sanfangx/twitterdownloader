@@ -299,6 +299,8 @@ class DownloadSettingsPage extends StatefulWidget {
 
 class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
   String _selectedQuality = 'orig';
+  String _gridQuality = 'medium';
+  String _previewQuality = 'orig';
   String _selectedNamingRule = 'username_tweetId';
 
   @override
@@ -311,18 +313,22 @@ class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _selectedQuality = prefs.getString('tw_download_quality') ?? 'orig';
+      _gridQuality = prefs.getString('tw_grid_quality') ?? 'medium';
+      _previewQuality = prefs.getString('tw_preview_quality') ?? 'orig';
       _selectedNamingRule = prefs.getString('tw_filename_rule') ?? 'username_tweetId';
     });
   }
 
-  Future<void> _saveQuality(String quality) async {
+  Future<void> _saveQuality(String key, String quality) async {
     setState(() {
-      _selectedQuality = quality;
+      if (key == 'tw_download_quality') _selectedQuality = quality;
+      if (key == 'tw_grid_quality') _gridQuality = quality;
+      if (key == 'tw_preview_quality') _previewQuality = quality;
     });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('tw_download_quality', quality);
+    await prefs.setString(key, quality);
     try {
-      await SharedPreferenceAppGroup.setString('tw_download_quality', quality);
+      await SharedPreferenceAppGroup.setString(key, quality);
     } catch (e) {
       debugPrint('AppGroup save quality error: $e');
     }
@@ -341,12 +347,12 @@ class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
     }
   }
 
-  Widget _buildQualityOption(String title, String subtitle, String value) {
+  Widget _buildQualityOption(String title, String subtitle, String value, String currentVal, String prefsKey) {
     return ListTile(
       title: Text(title),
       subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-      trailing: _selectedQuality == value ? const Icon(Icons.check, color: Colors.blue) : null,
-      onTap: () => _saveQuality(value),
+      trailing: currentVal == value ? const Icon(Icons.check, color: Colors.blue) : null,
+      onTap: () => _saveQuality(prefsKey, value),
     );
   }
 
@@ -385,11 +391,59 @@ class _DownloadSettingsPageState extends State<DownloadSettingsPage> {
             ),
             child: Column(
               children: [
-                _buildQualityOption('原图 (Original)', '最高画质，文件最大 (推荐)', 'orig'),
+                _buildQualityOption('原图 (Original)', '最高画质，文件最大 (推荐)', 'orig', _selectedQuality, 'tw_download_quality'),
                 const Divider(height: 1, indent: 16, color: Colors.white10),
-                _buildQualityOption('大图 (Large)', '高画质，适合日常浏览', 'large'),
+                _buildQualityOption('大图 (Large)', '高画质，适合日常浏览', 'large', _selectedQuality, 'tw_download_quality'),
                 const Divider(height: 1, indent: 16, color: Colors.white10),
-                _buildQualityOption('中等 (Medium)', '中等画质，节省空间', 'medium'),
+                _buildQualityOption('中等 (Medium)', '中等画质，节省空间', 'medium', _selectedQuality, 'tw_download_quality'),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+          const Padding(
+            padding: EdgeInsets.only(left: 8, bottom: 8),
+            child: Text(
+              '列表预览清晰度',
+              style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                _buildQualityOption('大图 (Large)', '高画质', 'large', _gridQuality, 'tw_grid_quality'),
+                const Divider(height: 1, indent: 16, color: Colors.white10),
+                _buildQualityOption('中等 (Medium)', '中等画质，加载较快 (推荐)', 'medium', _gridQuality, 'tw_grid_quality'),
+                const Divider(height: 1, indent: 16, color: Colors.white10),
+                _buildQualityOption('小图 (Small)', '低画质，加载极快', 'small', _gridQuality, 'tw_grid_quality'),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+          const Padding(
+            padding: EdgeInsets.only(left: 8, bottom: 8),
+            child: Text(
+              '全屏查看清晰度',
+              style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                _buildQualityOption('原图 (Original)', '最高画质，细节最清晰 (推荐)', 'orig', _previewQuality, 'tw_preview_quality'),
+                const Divider(height: 1, indent: 16, color: Colors.white10),
+                _buildQualityOption('大图 (Large)', '高画质，省流', 'large', _previewQuality, 'tw_preview_quality'),
+                const Divider(height: 1, indent: 16, color: Colors.white10),
+                _buildQualityOption('中等 (Medium)', '中等画质', 'medium', _previewQuality, 'tw_preview_quality'),
               ],
             ),
           ),

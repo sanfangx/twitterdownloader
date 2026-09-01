@@ -33,6 +33,12 @@ class ShareViewController: UIViewController {
     // Pan gesture tracking
     private var cardInitialY: CGFloat = 0
 
+    // For video/gif download support
+    private struct MediaItem {
+        let url: URL
+        let isVideo: Bool
+    }
+
     // MARK: - Logger
     private func extLog(_ message: String) {
         guard let defaults = UserDefaults(suiteName: appGroupId) else { return }
@@ -494,11 +500,7 @@ class ShareViewController: UIViewController {
                     
                     let quality = UserDefaults(suiteName: appGroupId)?.string(forKey: "tw_download_quality") ?? "orig"
                     
-                    struct MediaItem {
-                        let url: URL
-                        let isVideo: Bool
-                    }
-                    
+
                     let mediaItems = medias.compactMap { media -> MediaItem? in
                         let type = media["type"] as? String
                         

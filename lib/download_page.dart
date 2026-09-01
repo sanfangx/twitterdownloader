@@ -95,14 +95,14 @@ class _DownloadPageState extends State<DownloadPage> {
 
     setState(() {
       _isDownloading = true;
-      _statusMessage = '正在下载 ${selected.length} 张原图...';
+      _statusMessage = '正在下载 ${selected.length} 个文件...';
     });
 
     try {
       final count = await TwitterService.downloadAndSaveImages(selected);
       setState(() {
         _isDownloading = false;
-        _statusMessage = '✅ 成功保存 $count 张原图到相册';
+        _statusMessage = '✅ 成功保存 $count 个文件到相册';
       });
     } catch (e) {
       setState(() {
@@ -153,7 +153,7 @@ class _DownloadPageState extends State<DownloadPage> {
       final count = await TwitterService.downloadAndSaveImages(media);
       setState(() {
         _isDownloading = false;
-        _statusMessage = '✅ 成功保存 $count 张原图到相册';
+        _statusMessage = '✅ 成功保存 $count 个文件到相册';
       });
     } catch (e) {
       setState(() {
@@ -322,6 +322,21 @@ class _DownloadPageState extends State<DownloadPage> {
                                     },
                                   ),
                                 ),
+                                if (media.type == 'video' || media.type == 'animated_gif')
+                                  Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        media.type == 'animated_gif' ? Icons.gif_box : Icons.play_arrow,
+                                        color: Colors.white,
+                                        size: 32,
+                                      ),
+                                    ),
+                                  ),
                                 // Selection indicator in top-right with large hit area
                                 Positioned(
                                   top: 0,
@@ -511,23 +526,41 @@ class _ImagePreviewGalleryState extends State<ImagePreviewGallery> {
             child: InteractiveViewer(
               minScale: 0.8,
               maxScale: 5.0,
-              child: Image.network(
-                media.getUrl(widget.previewQuality),
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  final total = loadingProgress.expectedTotalBytes;
-                  final loaded = loadingProgress.cumulativeBytesLoaded;
-                  return Center(
-                    child: CircularProgressIndicator(
-                      value: total != null ? loaded / total : null,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.network(
+                    media.getUrl(widget.previewQuality),
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      final total = loadingProgress.expectedTotalBytes;
+                      final loaded = loadingProgress.cumulativeBytesLoaded;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: total != null ? loaded / total : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stack) => const Center(
+                      child: Icon(Icons.broken_image,
+                          color: Colors.white38, size: 48),
                     ),
-                  );
-                },
-                errorBuilder: (context, error, stack) => const Center(
-                  child: Icon(Icons.broken_image,
-                      color: Colors.white38, size: 48),
-                ),
+                  ),
+                  if (media.type == 'video' || media.type == 'animated_gif')
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        media.type == 'animated_gif' ? Icons.gif_box : Icons.play_arrow,
+                        color: Colors.white,
+                        size: 64,
+                      ),
+                    ),
+                ],
               ),
             ),
           );

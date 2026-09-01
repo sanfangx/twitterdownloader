@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:path_provider/path_provider.dart';
 
 class TweetMedia {
   final String mediaUrlHttps;
@@ -11,6 +13,7 @@ class TweetMedia {
   final String username;
   final int index; // 1-based index
   final int totalCount;
+  final String? videoUrl; // Extracted MP4 url
   bool selected;
 
   TweetMedia({
@@ -20,6 +23,7 @@ class TweetMedia {
     required this.username,
     required this.index,
     required this.totalCount,
+    this.videoUrl,
     this.selected = false, // Requirement 1: default to not selected
   });
 
@@ -170,18 +174,43 @@ class TwitterService {
     final rawMediaList = extendedEntities['media'] as List?;
     if (rawMediaList == null || rawMediaList.isEmpty) throw Exception('未找到图片');
 
-    final photoList = rawMediaList.where((m) => m['type'] == 'photo').toList();
-    final totalCount = photoList.length;
+    final validMediaList = rawMediaList.where((m) {
+      final t = m['type'];
+      return t == 'photo' || t == 'video' || t == 'animated_gif';
+    }).toList();
+    
+    if (validMediaList.isEmpty) throw Exception('未找到图片或视频');
+
+    final totalCount = validMediaList.length;
 
     return List.generate(totalCount, (i) {
-      final m = photoList[i];
+      final m = validMediaList[i];
+      final type = m['type'] as String;
+      String? videoUrl;
+
+      if (type == 'video' || type == 'animated_gif') {
+        final videoInfo = m['video_info'] as Map<String, dynamic>?;
+        if (videoInfo != null) {
+          final variants = videoInfo['variants'] as List<dynamic>?;
+          if (variants != null) {
+            // Find mp4 variants and sort by bitrate descending
+            final mp4Variants = variants.where((v) => v['content_type'] == 'video/mp4').toList();
+            mp4Variants.sort((a, b) => (b['bitrate'] ?? 0).compareTo(a['bitrate'] ?? 0));
+            if (mp4Variants.isNotEmpty) {
+              videoUrl = mp4Variants.first['url'] as String;
+            }
+          }
+        }
+      }
+
       return TweetMedia(
         mediaUrlHttps: m['media_url_https'] as String,
-        type: m['type'] as String,
+        type: type,
         tweetId: tweetId,
         username: username,
         index: i + 1,
         totalCount: totalCount,
+        videoUrl: videoUrl,
         selected: false,
       );
     });
@@ -195,20 +224,35 @@ class TwitterService {
     int savedCount = 0;
     for (final media in mediaList) {
       try {
-        final response = await http.get(Uri.parse(media.getUrl(quality)));
-        if (response.statusCode == 200) {
-          final fileName = media.getFilename(rule);
-          final result = await ImageGallerySaver.saveImage(
-            Uint8List.fromList(response.bodyBytes),
-            quality: 100,
-            name: fileName,
-          );
-          if (result != null && result['isSuccess'] == true) {
-            savedCount++;
+        final fileName = media.getFilename(rule);
+
+        if (media.type == 'video' || media.type == 'animated_gif') {
+          if (media.videoUrl == null) continue;
+          final response = await http.get(Uri.parse(media.videoUrl!));
+          if (response.statusCode == 200) {
+            final tempDir = await getTemporaryDirectory();
+            final file = File('${tempDir.path}/$fileName.mp4');
+            await file.writeAsBytes(response.bodyBytes);
+            final result = await ImageGallerySaver.saveFile(file.path);
+            if (result != null && result['isSuccess'] == true) {
+              savedCount++;
+            }
+          }
+        } else {
+          final response = await http.get(Uri.parse(media.getUrl(quality)));
+          if (response.statusCode == 200) {
+            final result = await ImageGallerySaver.saveImage(
+              Uint8List.fromList(response.bodyBytes),
+              quality: 100,
+              name: fileName,
+            );
+            if (result != null && result['isSuccess'] == true) {
+              savedCount++;
+            }
           }
         }
       } catch (e) {
-        debugPrint('下载图片失败: $e');
+        debugPrint('下载媒体失败: $e');
       }
     }
     return savedCount;

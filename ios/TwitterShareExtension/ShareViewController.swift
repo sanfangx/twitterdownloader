@@ -494,23 +494,49 @@ class ShareViewController: UIViewController {
                     
                     let quality = UserDefaults(suiteName: appGroupId)?.string(forKey: "tw_download_quality") ?? "orig"
                     
-                    let imageUrls = medias.compactMap { media -> URL? in
-                        guard media["type"] as? String == "photo",
-                              let mediaUrl = media["media_url_https"] as? String else { return nil }
-                        let destUrlStr = mediaUrl.contains("?format=")
-                            ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=\(quality)", options: .regularExpression)
-                            : mediaUrl + ":\(quality)"
-                        return URL(string: destUrlStr)
+                    struct MediaItem {
+                        let url: URL
+                        let isVideo: Bool
                     }
                     
-                    if imageUrls.isEmpty {
-                        extLog("No photo URLs found in tweet media")
-                        showFailure(message: "未在这条推文中找到图片", canRetry: false)
+                    let mediaItems = medias.compactMap { media -> MediaItem? in
+                        let type = media["type"] as? String
+                        
+                        if type == "video" || type == "animated_gif" {
+                            if let videoInfo = media["video_info"] as? [String: Any],
+                               let variants = videoInfo["variants"] as? [[String: Any]] {
+                                
+                                let mp4Variants = variants.filter { $0["content_type"] as? String == "video/mp4" }
+                                let sortedVariants = mp4Variants.sorted { 
+                                    ($0["bitrate"] as? Int ?? 0) > ($1["bitrate"] as? Int ?? 0) 
+                                }
+                                
+                                if let bestUrlStr = sortedVariants.first?["url"] as? String,
+                                   let url = URL(string: bestUrlStr) {
+                                    return MediaItem(url: url, isVideo: true)
+                                }
+                            }
+                        } else if type == "photo" {
+                            if let mediaUrl = media["media_url_https"] as? String {
+                                let destUrlStr = mediaUrl.contains("?format=")
+                                    ? mediaUrl.replacingOccurrences(of: "name=[^&]+", with: "name=\(quality)", options: .regularExpression)
+                                    : mediaUrl + ":\(quality)"
+                                if let url = URL(string: destUrlStr) {
+                                    return MediaItem(url: url, isVideo: false)
+                                }
+                            }
+                        }
+                        return nil
+                    }
+                    
+                    if mediaItems.isEmpty {
+                        extLog("No media URLs found in tweet")
+                        showFailure(message: "未在这条推文中找到媒体内容", canRetry: false)
                         return
                     }
                     
-                    extLog("Found \(imageUrls.count) image URLs to download")
-                    await downloadImages(urls: imageUrls, tweetId: tweetId, username: username)
+                    extLog("Found \(mediaItems.count) media items to download")
+                    await downloadImages(mediaItems: mediaItems, tweetId: tweetId, username: username)
                     
                 } else {
                     extLog("No media in tweet")
@@ -533,30 +559,30 @@ class ShareViewController: UIViewController {
     // - Background sessions require a real App Group container on disk, which TrollStore
     //   doesn't create (it only injects the entitlement via ldid)
     // - Sequential downloads minimize memory pressure in the extension
-    private func downloadImages(urls: [URL], tweetId: String, username: String) async {
-        extLog("Starting downloadImages for \(urls.count) images")
-        totalImages = urls.count
+    private func downloadImages(mediaItems: [MediaItem], tweetId: String, username: String) async {
+        extLog("Starting downloadImages for \(mediaItems.count) files")
+        totalImages = mediaItems.count
         savedCount = 0
         failedCount = 0
         
-        updateStatus("正在下载 \(totalImages) 张原图...")
+        updateStatus("正在下载 \(totalImages) 个文件...")
         updateProgress(0)
         
         let session = URLSession(configuration: .default)
         let rule = UserDefaults(suiteName: appGroupId)?.string(forKey: "tw_filename_rule") ?? "username_tweetId"
         
-        for (index, url) in urls.enumerated() {
+        for (index, media) in mediaItems.enumerated() {
             if Task.isCancelled {
-                extLog("Task cancelled during image \(index)")
+                extLog("Task cancelled during item \(index)")
                 return
             }
             
             let fileNum = index + 1
             updateStatus("正在下载 (\(fileNum)/\(totalImages))...")
-            extLog("Downloading image \(fileNum): \(url.absoluteString)")
+            extLog("Downloading item \(fileNum): \(media.url.absoluteString)")
             
             do {
-                var request = URLRequest(url: url)
+                var request = URLRequest(url: media.url)
                 request.timeoutInterval = 60
                 request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "user-agent")
                 
@@ -565,14 +591,16 @@ class ShareViewController: UIViewController {
                 
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                     let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    extLog("Image \(fileNum) HTTP Error: \(code)")
+                    extLog("Item \(fileNum) HTTP Error: \(code)")
                     failedCount += 1
                     updateProgress(Float(index + 1) / Float(totalImages))
                     continue
                 }
                 
-                let mimeType = response.mimeType ?? "image/jpeg"
-                let ext = mimeType == "image/png" ? "png" : "jpg"
+                let mimeType = response.mimeType ?? (media.isVideo ? "video/mp4" : "image/jpeg")
+                var ext = media.isVideo ? "mp4" : (mimeType == "image/png" ? "png" : "jpg")
+                // Sometimes video API gives octet-stream, enforce mp4 if we know it's a video
+                if media.isVideo { ext = "mp4" }
                 
                 var fileNamePrefix = "twitter_\(Int(Date().timeIntervalSince1970))_\(fileNum)"
                 if rule == "tweet_url" {
@@ -593,22 +621,26 @@ class ShareViewController: UIViewController {
                 }
                 try fileManager.moveItem(at: tempFileURL, to: destURL)
                 
-                extLog("Image \(fileNum) moved to \(destURL.lastPathComponent). Saving to Photos...")
+                extLog("Item \(fileNum) moved to \(destURL.lastPathComponent). Saving to Photos...")
                 
                 // Save directly from the correctly extensioned temp file to Photos
                 try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: destURL)
+                    if media.isVideo {
+                        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: destURL)
+                    } else {
+                        PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: destURL)
+                    }
                 }
                 
                 // Clean up
                 try? fileManager.removeItem(at: destURL)
                 
-                extLog("Image \(fileNum) saved successfully.")
+                extLog("Item \(fileNum) saved successfully.")
                 savedCount += 1
                 
             } catch {
                 if Task.isCancelled { return }
-                extLog("Image \(fileNum) error: \(error.localizedDescription)")
+                extLog("Item \(fileNum) error: \(error.localizedDescription)")
                 failedCount += 1
             }
             
